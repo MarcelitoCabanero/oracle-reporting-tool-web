@@ -1,0 +1,22 @@
+{
+  "name": "oracle-reporting-tool-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Internal OracleDB reporting dashboard",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w server && npm run build -w client",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
+    "check": "npm run typecheck && npm run build",
+    "dev:api": "npm run dev -w server",
+    "dev:web": "npm run dev -w client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3"
+  }
+}
