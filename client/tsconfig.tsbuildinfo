@@ -1,1 +1,1 @@
-{"root":["./src/main.tsx","./src/app/app.tsx"],"version":"5.9.3"}
+{"root":["./src/main.tsx","./src/vite-env.d.ts","./src/app/app.tsx","./src/components/common/confirmdialog.tsx","./src/components/navigation/sidebar.tsx","./src/components/navigation/topheader.tsx","./src/features/auth/authcontext.tsx","./src/features/auth/loginform.tsx","./src/features/bom/bomreport.tsx","./src/features/bom/finishedgoodsearch.tsx","./src/features/bom/exportutils.ts","./src/layouts/applayout.tsx","./src/pages/dashboardpage.tsx"],"version":"5.9.3"}

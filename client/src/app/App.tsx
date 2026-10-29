@@ -1,105 +1,150 @@
 import { useEffect, useState } from 'react';
+import { AppLayout } from '../layouts/AppLayout';
+import { LoginForm } from '../features/auth/LoginForm';
+import { DashboardPage } from '../pages/DashboardPage';
+import { BomReport } from '../features/bom/BomReport';
+import { useAuth } from '../features/auth/AuthContext';
+import type { Page, Theme } from '../components/navigation/Sidebar';
+import logo from '../assets/jco-logo.png';
 
-type HealthState = 'checking' | 'online' | 'offline';
+const themeStorageKey = 'oracle-reporting-tool-theme';
 
-export function App() {
-  const [apiState, setApiState] = useState<HealthState>('checking');
+function getInitialTheme(): Theme {
+  const savedTheme = window.localStorage.getItem(themeStorageKey);
+  return savedTheme === 'dark' ? 'dark' : 'light';
+}
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    fetch('/api/health', { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error('API health check failed');
-        return response.json() as Promise<{ status: string }>;
-      })
-      .then((data) => setApiState(data.status === 'ok' ? 'online' : 'offline'))
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        setApiState('offline');
-      });
-
-    return () => controller.abort();
-  }, []);
-
+function PlaceholderPage({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand-mark">OR</div>
-        <div className="brand-copy">
-          <strong>Oracle Reporting</strong>
-          <span>Internal analytics</span>
-        </div>
-        <div className="nav-label">WORKSPACE</div>
-        <button className="nav-item active" type="button">Overview</button>
-        <div className="nav-label">REPORTS</div>
-        <button className="nav-item" type="button" disabled>KPI &amp; Top Sales Stores</button>
-        <button className="nav-item" type="button" disabled>Deposit Monitoring</button>
-        <button className="nav-item" type="button" disabled>Variance Analysis</button>
-        <button className="nav-item" type="button" disabled>BOM / Inventory Analysis</button>
-        <div className="sidebar-footer">Foundation milestone · v0.1.0</div>
-      </aside>
-
-      <main className="main-content">
-        <header className="topbar">
-          <div>
-            <div className="eyebrow">REPORTING WORKSPACE</div>
-            <h1>Overview</h1>
-          </div>
-          <div className={`api-status ${apiState}`}>
-            <span className="status-dot" />
-            API {apiState === 'checking' ? 'checking' : apiState}
-          </div>
-        </header>
-
-        <section className="welcome-panel">
-          <div>
-            <div className="eyebrow light">PROJECT FOUNDATION</div>
-            <h2>A clearer view of store performance.</h2>
-            <p>The application shell is ready for the reporting modules to be added incrementally.</p>
-          </div>
-          <div className="welcome-symbol" aria-hidden="true">OR</div>
-        </section>
-
-        <section className="section-heading">
-          <div>
-            <div className="eyebrow">NEXT IMPLEMENTATION</div>
-            <h2>Reporting modules</h2>
-          </div>
-          <span className="muted">Planned · not connected to production data</span>
-        </section>
-
-        <section className="module-grid">
-          <article className="module-card featured">
-            <div className="module-icon">BOM</div>
-            <div className="module-status">NEXT UP</div>
-            <h3>Theoretical BOM Requirements</h3>
-            <p>Calculate theoretical raw-material requirements from sold finished goods, with multi-level recipe traceability.</p>
-            <ul>
-              <li>Business date and store filters</li>
-              <li>Single finished good or all finished goods</li>
-              <li>Consolidated raw-material summary</li>
-              <li>Multi-level calculation trace</li>
-            </ul>
-          </article>
-          <article className="module-card">
-            <div className="module-icon">VAR</div>
-            <h3>Variance Analysis</h3>
-            <p>Reserved for the existing variance workflow and its validated business rules.</p>
-            <span className="coming-soon">Planned</span>
-          </article>
-          <article className="module-card">
-            <div className="module-icon">KPI</div>
-            <h3>KPI &amp; Top Sales Stores</h3>
-            <p>Store-level sales performance and KPI reporting.</p>
-            <span className="coming-soon">Planned</span>
-          </article>
-        </section>
-
-        <footer className="page-footer">
-          SQL Server access is handled by the API only. No database credentials are exposed in the browser.
-        </footer>
-      </main>
+    <div className="system-sales-placeholder">
+      <h5 className="fw-bold text-dark">{title}</h5>
+      <p className="text-secondary">{description}</p>
     </div>
   );
 }
+
+export function App() {
+  const [activePage, setActivePage] = useState<Page>('bom');
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const { user, isLoading } = useAuth();
+
+  function changeTheme(nextTheme: Theme) {
+    setTheme(nextTheme);
+    window.localStorage.setItem(themeStorageKey, nextTheme);
+  }
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
+  if (isLoading) {
+    return (
+      <div
+        className="min-vh-100 d-flex flex-column align-items-center justify-content-center gap-3"
+        style={{ background: 'var(--app-bg)' }}
+      >
+        <img
+          src={logo}
+          alt="Oracle Reporting Tool"
+          style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'contain' }}
+        />
+        <div className="d-flex align-items-center gap-2 text-secondary small">
+          <span className="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true" />
+          <span>Loading Oracle Reporting Tool...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginForm />;
+  }
+
+  function renderPage() {
+    switch (activePage) {
+      case 'dashboard':
+        return <DashboardPage onNavigate={setActivePage} />;
+
+      case 'bom':
+        return <BomReport />;
+
+      case 'system-sales':
+        return (
+          <PlaceholderPage
+            title="Variance Analysis (System Sales)"
+            description="Actual consumption scoping is in progress. Theoretical BOM requirements are currently active under the Theoretical BOM module."
+          />
+        );
+
+      case 'finance-insight':
+        return (
+          <PlaceholderPage
+            title="Finance Insight"
+            description="Financial performance and analytical dashboards across store locations."
+          />
+        );
+
+      case 'hourly-sales':
+        return (
+          <PlaceholderPage
+            title="Hourly Sales"
+            description="Hourly store sales breakdown and peak performance analytics."
+          />
+        );
+
+      case 'menu-item':
+        return (
+          <PlaceholderPage
+            title="Menu Item Sales"
+            description="Product and menu item volume performance."
+          />
+        );
+
+      case 'tender-listing':
+        return (
+          <PlaceholderPage
+            title="Tender Listing"
+            description="Payment tender methods, credit/debit collections, and cash reconciliation."
+          />
+        );
+
+      case 'rof':
+        return (
+          <PlaceholderPage
+            title="Remittance of Funds (ROF)"
+            description="Bank remittances, cash pickups, and store deposit logs."
+          />
+        );
+
+      case 'deposit':
+        return (
+          <PlaceholderPage
+            title="Deposit Monitoring"
+            description="Daily cash deposit tracking and discrepancy detection."
+          />
+        );
+
+      default:
+        return <DashboardPage onNavigate={setActivePage} />;
+    }
+  }
+
+  return (
+    <AppLayout
+      activePage={activePage}
+      onNavigate={setActivePage}
+      theme={theme}
+      onThemeChange={changeTheme}
+    >
+      {renderPage()}
+    </AppLayout>
+  );
+}
+
+export default App;
