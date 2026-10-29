@@ -3,6 +3,7 @@ import { AppLayout } from '../layouts/AppLayout';
 import { LoginForm } from '../features/auth/LoginForm';
 import { DashboardPage } from '../pages/DashboardPage';
 import { BomReport } from '../features/bom/BomReport';
+import { RofReport } from '../features/rof/RofReport';
 import { useAuth } from '../features/auth/AuthContext';
 import type { Page, Theme } from '../components/navigation/Sidebar';
 import logo from '../assets/jco-logo.png';
@@ -115,12 +116,7 @@ export function App() {
         );
 
       case 'rof':
-        return (
-          <PlaceholderPage
-            title="Remittance of Funds (ROF)"
-            description="Bank remittances, cash pickups, and store deposit logs."
-          />
-        );
+        return <RofReport />;
 
       case 'deposit':
         return (

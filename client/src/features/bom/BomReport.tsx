@@ -153,8 +153,7 @@ export function BomReport() {
       <div className="d-flex align-items-center justify-content-between gap-3 mb-4">
         <div className="d-flex align-items-center gap-3">
           <div
-            className="d-flex align-items-center justify-content-center rounded-3 text-white shadow-sm flex-shrink-0"
-            style={{ width: 44, height: 44, background: 'linear-gradient(135deg, var(--oracle-red), var(--oracle-red-hover))' }}
+            className="bom-header-icon-badge d-flex align-items-center justify-content-center rounded-3 shadow-sm flex-shrink-0"
           >
             <Calculator size={22} />
           </div>

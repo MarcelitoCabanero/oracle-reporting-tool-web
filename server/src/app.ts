@@ -4,6 +4,7 @@ import { env } from './config/env.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { bomRouter } from './modules/bom/bom.routes.js';
+import { rofRouter } from './modules/rof/rof.routes.js';
 
 export const app = express();
 
@@ -18,6 +19,7 @@ app.get('/api', (_request, response) => {
 app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/reports/bom', bomRouter);
+app.use('/api/reports/rof', rofRouter);
 
 app.use((_request, response) => {
   response.status(404).json({ error: 'Not found' });
