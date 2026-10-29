@@ -4,15 +4,37 @@ import { LoginForm } from '../features/auth/LoginForm';
 import { DashboardPage } from '../pages/DashboardPage';
 import { BomReport } from '../features/bom/BomReport';
 import { RofReport } from '../features/rof/RofReport';
+import { DepositMonitoring } from '../features/deposit/DepositMonitoring';
 import { useAuth } from '../features/auth/AuthContext';
 import type { Page, Theme } from '../components/navigation/Sidebar';
 import logo from '../assets/jco-logo.png';
 
 const themeStorageKey = 'oracle-reporting-tool-theme';
+const activePageStorageKey = 'oracle-reporting-active-page';
+
+const validPages: Page[] = [
+  'dashboard',
+  'bom',
+  'finance-insight',
+  'hourly-sales',
+  'system-sales',
+  'menu-item',
+  'tender-listing',
+  'rof',
+  'deposit',
+];
 
 function getInitialTheme(): Theme {
   const savedTheme = window.localStorage.getItem(themeStorageKey);
   return savedTheme === 'dark' ? 'dark' : 'light';
+}
+
+function getInitialPage(): Page {
+  const saved = window.sessionStorage.getItem(activePageStorageKey) as Page | null;
+  if (saved && validPages.includes(saved)) {
+    return saved;
+  }
+  return 'bom';
 }
 
 function PlaceholderPage({
@@ -31,9 +53,18 @@ function PlaceholderPage({
 }
 
 export function App() {
-  const [activePage, setActivePage] = useState<Page>('bom');
+  const [activePage, setActivePage] = useState<Page>(getInitialPage);
+  const [visitedPages, setVisitedPages] = useState<Record<string, boolean>>(() => ({
+    [getInitialPage()]: true,
+  }));
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const { user, isLoading } = useAuth();
+
+  function handleNavigate(nextPage: Page) {
+    setActivePage(nextPage);
+    setVisitedPages((prev) => (prev[nextPage] ? prev : { ...prev, [nextPage]: true }));
+    window.sessionStorage.setItem(activePageStorageKey, nextPage);
+  }
 
   function changeTheme(nextTheme: Theme) {
     setTheme(nextTheme);
@@ -67,14 +98,8 @@ export function App() {
     return <LoginForm />;
   }
 
-  function renderPage() {
+  function renderPlaceholderPage() {
     switch (activePage) {
-      case 'dashboard':
-        return <DashboardPage onNavigate={setActivePage} />;
-
-      case 'bom':
-        return <BomReport />;
-
       case 'system-sales':
         return (
           <PlaceholderPage
@@ -115,30 +140,44 @@ export function App() {
           />
         );
 
-      case 'rof':
-        return <RofReport />;
-
-      case 'deposit':
-        return (
-          <PlaceholderPage
-            title="Deposit Monitoring"
-            description="Daily cash deposit tracking and discrepancy detection."
-          />
-        );
-
       default:
-        return <DashboardPage onNavigate={setActivePage} />;
+        return null;
     }
   }
 
   return (
     <AppLayout
       activePage={activePage}
-      onNavigate={setActivePage}
+      onNavigate={handleNavigate}
       theme={theme}
       onThemeChange={changeTheme}
     >
-      {renderPage()}
+      {/* Keep active report modules mounted once visited so switching pages preserves state & scroll position */}
+      {(visitedPages.dashboard || activePage === 'dashboard') && (
+        <div style={{ display: activePage === 'dashboard' ? 'block' : 'none' }}>
+          <DashboardPage onNavigate={handleNavigate} />
+        </div>
+      )}
+
+      {(visitedPages.bom || activePage === 'bom') && (
+        <div style={{ display: activePage === 'bom' ? 'block' : 'none' }}>
+          <BomReport />
+        </div>
+      )}
+
+      {(visitedPages.rof || activePage === 'rof') && (
+        <div style={{ display: activePage === 'rof' ? 'block' : 'none' }}>
+          <RofReport />
+        </div>
+      )}
+
+      {(visitedPages.deposit || activePage === 'deposit') && (
+        <div style={{ display: activePage === 'deposit' ? 'block' : 'none' }}>
+          <DepositMonitoring />
+        </div>
+      )}
+
+      {renderPlaceholderPage()}
     </AppLayout>
   );
 }

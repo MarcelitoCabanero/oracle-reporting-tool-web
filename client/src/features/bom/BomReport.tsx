@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Calculator,
   FileSpreadsheet,
@@ -23,31 +23,98 @@ interface Store {
   ORGLOCATIONREF: string;
 }
 
+const BOM_SESSION_KEY = 'oracle-session-bom';
+
+interface BomSavedSession {
+  selectedLocation: string;
+  startDate: string;
+  endDate: string;
+  selectedFg: FinishedGood | null;
+  consolidatedData: ConsolidatedItem[];
+  breakdownData: BreakdownItem[];
+  lastFilters: ReportFilters | null;
+  activeTab: 'consolidated' | 'breakdown';
+  tableSearch: string;
+}
+
+function loadBomSession(): Partial<BomSavedSession> {
+  try {
+    const raw = window.sessionStorage.getItem(BOM_SESSION_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Partial<BomSavedSession>;
+  } catch {
+    return {};
+  }
+}
+
 export function BomReport() {
   const { token } = useAuth();
+  const savedSession = useMemo(() => loadBomSession(), []);
 
   // Stores filter
   const [stores, setStores] = useState<Store[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<string>('');
+  const [selectedLocation, setSelectedLocation] = useState<string>(
+    () => savedSession.selectedLocation ?? ''
+  );
 
   // Date filters
   const todayStr = new Date().toISOString().split('T')[0] ?? '';
-  const [startDate, setStartDate] = useState<string>(todayStr);
-  const [endDate, setEndDate] = useState<string>(todayStr);
+  const [startDate, setStartDate] = useState<string>(() => savedSession.startDate ?? todayStr);
+  const [endDate, setEndDate] = useState<string>(() => savedSession.endDate ?? todayStr);
 
   // Finished Good filter
-  const [selectedFg, setSelectedFg] = useState<FinishedGood | null>(null);
+  const [selectedFg, setSelectedFg] = useState<FinishedGood | null>(
+    () => savedSession.selectedFg ?? null
+  );
 
   // Calculation state & results
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [consolidatedData, setConsolidatedData] = useState<ConsolidatedItem[]>([]);
-  const [breakdownData, setBreakdownData] = useState<BreakdownItem[]>([]);
-  const [lastFilters, setLastFilters] = useState<ReportFilters | null>(null);
+  const [consolidatedData, setConsolidatedData] = useState<ConsolidatedItem[]>(
+    () => savedSession.consolidatedData ?? []
+  );
+  const [breakdownData, setBreakdownData] = useState<BreakdownItem[]>(
+    () => savedSession.breakdownData ?? []
+  );
+  const [lastFilters, setLastFilters] = useState<ReportFilters | null>(
+    () => savedSession.lastFilters ?? null
+  );
 
   // Active view tab & in-table quick search
-  const [activeTab, setActiveTab] = useState<'consolidated' | 'breakdown'>('consolidated');
-  const [tableSearch, setTableSearch] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'consolidated' | 'breakdown'>(
+    () => savedSession.activeTab ?? 'consolidated'
+  );
+  const [tableSearch, setTableSearch] = useState<string>(() => savedSession.tableSearch ?? '');
+
+  // Persist BOM session state to sessionStorage
+  useEffect(() => {
+    try {
+      const payload: BomSavedSession = {
+        selectedLocation,
+        startDate,
+        endDate,
+        selectedFg,
+        consolidatedData,
+        breakdownData,
+        lastFilters,
+        activeTab,
+        tableSearch,
+      };
+      window.sessionStorage.setItem(BOM_SESSION_KEY, JSON.stringify(payload));
+    } catch {
+      // Ignore sessionStorage quota errors
+    }
+  }, [
+    selectedLocation,
+    startDate,
+    endDate,
+    selectedFg,
+    consolidatedData,
+    breakdownData,
+    lastFilters,
+    activeTab,
+    tableSearch,
+  ]);
 
   // Fetch active store locations on mount
   useEffect(() => {
@@ -63,8 +130,13 @@ export function BomReport() {
       .then((data) => {
         const storeList: Store[] = data.stores || [];
         setStores(storeList);
-        if (storeList.length > 0 && !selectedLocation && storeList[0]) {
-          setSelectedLocation(storeList[0].LOCATIONNAME);
+        if (storeList.length > 0 && storeList[0]) {
+          setSelectedLocation((current) => {
+            if (current && storeList.some((s) => s.LOCATIONNAME === current)) {
+              return current;
+            }
+            return storeList[0].LOCATIONNAME;
+          });
         }
       })
       .catch((err) => {

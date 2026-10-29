@@ -60,40 +60,119 @@ function getVarianceClass(variance: number): string {
   return variance > 0 ? 'rof-variance-over' : 'rof-variance-short';
 }
 
+const ROF_SESSION_KEY = 'oracle-session-rof';
+
+interface RofSavedSession {
+  activeTab: RofTab;
+  selectedLocation: string;
+  dateFrom: string;
+  dateTo: string;
+  summaryRows: RofSummaryRow[];
+  summaryLoadedFilters: {
+    locationName: string;
+    dateFrom: string;
+    dateTo: string;
+  } | null;
+  summarySearch: string;
+  detailsBusinessDate: string;
+  detailsCashRows: RofCashRow[];
+  detailsNonCashRows: RofNonCashRow[];
+  detailsLoadedFilters: {
+    locationName: string;
+    businessDate: string;
+    exists: boolean;
+  } | null;
+}
+
+function loadRofSession(): Partial<RofSavedSession> {
+  try {
+    const raw = window.sessionStorage.getItem(ROF_SESSION_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Partial<RofSavedSession>;
+  } catch {
+    return {};
+  }
+}
+
 export function RofReport() {
   const { token } = useAuth();
+  const savedSession = useMemo(() => loadRofSession(), []);
 
   // Active tab
-  const [activeTab, setActiveTab] = useState<RofTab>('summary');
+  const [activeTab, setActiveTab] = useState<RofTab>(() => savedSession.activeTab ?? 'summary');
 
   // Shared stores list
   const [stores, setStores] = useState<Store[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<string>('');
+  const [selectedLocation, setSelectedLocation] = useState<string>(
+    () => savedSession.selectedLocation ?? ''
+  );
 
   // Summary state
-  const [dateFrom, setDateFrom] = useState<string>(todayString);
-  const [dateTo, setDateTo] = useState<string>(todayString);
-  const [summaryRows, setSummaryRows] = useState<RofSummaryRow[]>([]);
+  const [dateFrom, setDateFrom] = useState<string>(() => savedSession.dateFrom ?? todayString());
+  const [dateTo, setDateTo] = useState<string>(() => savedSession.dateTo ?? todayString());
+  const [summaryRows, setSummaryRows] = useState<RofSummaryRow[]>(
+    () => savedSession.summaryRows ?? []
+  );
   const [summaryLoading, setSummaryLoading] = useState<boolean>(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [summaryLoadedFilters, setSummaryLoadedFilters] = useState<{
     locationName: string;
     dateFrom: string;
     dateTo: string;
-  } | null>(null);
-  const [summarySearch, setSummarySearch] = useState<string>('');
+  } | null>(() => savedSession.summaryLoadedFilters ?? null);
+  const [summarySearch, setSummarySearch] = useState<string>(() => savedSession.summarySearch ?? '');
 
   // Full-page Details tab state
-  const [detailsBusinessDate, setDetailsBusinessDate] = useState<string>(todayString);
-  const [detailsCashRows, setDetailsCashRows] = useState<RofCashRow[]>([]);
-  const [detailsNonCashRows, setDetailsNonCashRows] = useState<RofNonCashRow[]>([]);
+  const [detailsBusinessDate, setDetailsBusinessDate] = useState<string>(
+    () => savedSession.detailsBusinessDate ?? todayString()
+  );
+  const [detailsCashRows, setDetailsCashRows] = useState<RofCashRow[]>(
+    () => savedSession.detailsCashRows ?? []
+  );
+  const [detailsNonCashRows, setDetailsNonCashRows] = useState<RofNonCashRow[]>(
+    () => savedSession.detailsNonCashRows ?? []
+  );
   const [detailsLoading, setDetailsLoading] = useState<boolean>(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [detailsLoadedFilters, setDetailsLoadedFilters] = useState<{
     locationName: string;
     businessDate: string;
     exists: boolean;
-  } | null>(null);
+  } | null>(() => savedSession.detailsLoadedFilters ?? null);
+
+  // Persist ROF session state to sessionStorage
+  useEffect(() => {
+    try {
+      const payload: RofSavedSession = {
+        activeTab,
+        selectedLocation,
+        dateFrom,
+        dateTo,
+        summaryRows,
+        summaryLoadedFilters,
+        summarySearch,
+        detailsBusinessDate,
+        detailsCashRows,
+        detailsNonCashRows,
+        detailsLoadedFilters,
+      };
+      window.sessionStorage.setItem(ROF_SESSION_KEY, JSON.stringify(payload));
+    } catch {
+      // Ignore sessionStorage quota errors
+    }
+  }, [
+    activeTab,
+    selectedLocation,
+    dateFrom,
+    dateTo,
+    summaryRows,
+    summaryLoadedFilters,
+    summarySearch,
+    detailsBusinessDate,
+    detailsCashRows,
+    detailsNonCashRows,
+    detailsLoadedFilters,
+  ]);
 
   // Right Slide-Over Drawer state (for quick "View Details" from Summary ROF)
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
@@ -118,8 +197,13 @@ export function RofReport() {
       .then((data) => {
         const list: Store[] = data.stores || [];
         setStores(list);
-        if (list.length > 0 && !selectedLocation && list[0]) {
-          setSelectedLocation(list[0].LOCATIONNAME);
+        if (list.length > 0 && list[0]) {
+          setSelectedLocation((current) => {
+            if (current && list.some((s) => s.LOCATIONNAME === current)) {
+              return current;
+            }
+            return list[0].LOCATIONNAME;
+          });
         }
       })
       .catch((err) => {
@@ -541,7 +625,7 @@ export function RofReport() {
 
               {/* Summary Table Card */}
               <div className="card border rounded-4 shadow-sm overflow-hidden bg-white">
-                <div className="table-responsive">
+                <div className="table-responsive rof-grid-scroll-container">
                   <table className="table align-middle mb-0 bom-data-table rof-summary-table">
                     <colgroup>
                       <col style={{ width: '130px' }} />

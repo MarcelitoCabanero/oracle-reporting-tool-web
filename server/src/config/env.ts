@@ -56,4 +56,11 @@ export const env = {
       idleTimeoutMillis: 30000,
     },
   },
+
+  ftp: {
+    host: process.env.FTP_HOST?.trim() ?? 'ftp.cfi.com.ph',
+    user: process.env.FTP_USER?.trim() ?? 'cfiftp@cfi.com.ph',
+    password: process.env.FTP_PASSWORD?.trim() ?? '',
+    secure: process.env.FTP_SECURE === 'true',
+  },
 };

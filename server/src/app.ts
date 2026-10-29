@@ -5,6 +5,7 @@ import { healthRouter } from './modules/health/health.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { bomRouter } from './modules/bom/bom.routes.js';
 import { rofRouter } from './modules/rof/rof.routes.js';
+import { depositRouter } from './modules/deposit/deposit.routes.js';
 
 export const app = express();
 
@@ -20,6 +21,7 @@ app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/reports/bom', bomRouter);
 app.use('/api/reports/rof', rofRouter);
+app.use('/api/reports/deposit', depositRouter);
 
 app.use((_request, response) => {
   response.status(404).json({ error: 'Not found' });

@@ -139,7 +139,7 @@ export function Sidebar({ activePage, collapsed, onToggleCollapse, theme, onThem
 
         <SidebarSection title="FINANCE" collapsed={collapsed}>
           <NavItem label="ROF" page="rof" icon={<ReceiptText size={18} />} activePage={activePage} collapsed={collapsed} onNavigate={onNavigate} />
-          <NavItem label="Deposit Monitoring" page="deposit" icon={<WalletCards size={18} />} activePage={activePage} collapsed={collapsed} onNavigate={onNavigate} disabled />
+          <NavItem label="Deposit Monitoring" page="deposit" icon={<WalletCards size={18} />} activePage={activePage} collapsed={collapsed} onNavigate={onNavigate} />
         </SidebarSection>
       </nav>
 

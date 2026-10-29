@@ -78,6 +78,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem('oracle-reporting-active-page');
+    sessionStorage.removeItem('oracle-session-bom');
+    sessionStorage.removeItem('oracle-session-rof');
+    sessionStorage.removeItem('oracle-session-deposit');
     setToken(null);
     setUser(null);
   };
