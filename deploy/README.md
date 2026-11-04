@@ -24,19 +24,6 @@ A single unified production container (`oracle-reporting-web`) built on `node:22
    NODE_ENV=production
 
    JWT_SECRET=oracle_reporting_secret_key_change_in_production_2026
-
-   SQL_SERVER_HOST=192.168.5.201
-   SQL_SERVER_PORT=1433
-   SQL_SERVER_DATABASE=OracleDB
-   SQL_SERVER_USER=oracle_web_reporting
-   SQL_SERVER_PASSWORD=Cfi05122011
-   SQL_SERVER_ENCRYPT=true
-   SQL_SERVER_TRUST_SERVER_CERTIFICATE=true
-
-   FTP_HOST=ftp.cfi.com.ph
-   FTP_USER=cfiftp@cfi.com.ph
-   FTP_PASSWORD="9%%0ngTq;vYB@-_g"
-   FTP_SECURE=false
    ```
 
 ### 2. Deploy via Synology Container Manager (GUI)
