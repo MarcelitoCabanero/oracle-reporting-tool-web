@@ -82,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem('oracle-session-bom');
     sessionStorage.removeItem('oracle-session-rof');
     sessionStorage.removeItem('oracle-session-deposit');
+    sessionStorage.removeItem('oracle-session-menuitem');
     setToken(null);
     setUser(null);
   };

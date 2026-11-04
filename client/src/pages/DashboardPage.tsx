@@ -164,6 +164,15 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
                     onClick={() => onNavigate('deposit')}
                   />
                 </div>
+
+                <div className="col-12 col-md-6">
+                  <QuickAction
+                    icon={<ReceiptText size={19} className="text-secondary" />}
+                    title="Menu Item Sales"
+                    description="Sales Type Matrix & Summary"
+                    onClick={() => onNavigate('menu-item')}
+                  />
+                </div>
               </div>
             </div>
           </div>

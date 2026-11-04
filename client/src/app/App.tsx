@@ -5,6 +5,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { BomReport } from '../features/bom/BomReport';
 import { RofReport } from '../features/rof/RofReport';
 import { DepositMonitoring } from '../features/deposit/DepositMonitoring';
+import { MenuItemReport } from '../features/menuitem/MenuItemReport';
 import { useAuth } from '../features/auth/AuthContext';
 import type { Page, Theme } from '../components/navigation/Sidebar';
 import logo from '../assets/jco-logo.png';
@@ -124,14 +125,6 @@ export function App() {
           />
         );
 
-      case 'menu-item':
-        return (
-          <PlaceholderPage
-            title="Menu Item Sales"
-            description="Product and menu item volume performance."
-          />
-        );
-
       case 'tender-listing':
         return (
           <PlaceholderPage
@@ -174,6 +167,12 @@ export function App() {
       {(visitedPages.deposit || activePage === 'deposit') && (
         <div style={{ display: activePage === 'deposit' ? 'block' : 'none' }}>
           <DepositMonitoring />
+        </div>
+      )}
+
+      {(visitedPages['menu-item'] || activePage === 'menu-item') && (
+        <div style={{ display: activePage === 'menu-item' ? 'block' : 'none' }}>
+          <MenuItemReport />
         </div>
       )}
 
