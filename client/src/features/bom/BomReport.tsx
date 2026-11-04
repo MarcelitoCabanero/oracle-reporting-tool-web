@@ -8,6 +8,7 @@ import {
   Search,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { StoreSearchSelect } from '../../components/common/StoreSearchSelect';
 import { FinishedGoodSearch, type FinishedGood } from './FinishedGoodSearch';
 import {
   exportToExcel,
@@ -246,20 +247,14 @@ export function BomReport() {
             <label htmlFor="store-select" className="form-label small fw-semibold text-secondary">
               Store / Location
             </label>
-            <select
+            <StoreSearchSelect
               id="store-select"
-              className="form-select bom-filter-input"
+              inputClassName="form-select bom-filter-input"
+              stores={stores}
               value={selectedLocation}
-              onChange={(e) => setSelectedLocation(e.target.value)}
+              onChange={setSelectedLocation}
               disabled={isLoading}
-            >
-              {stores.length === 0 && <option value="">Loading active stores...</option>}
-              {stores.map((s) => (
-                <option key={s.LOCATIONID} value={s.LOCATIONNAME}>
-                  {s.LOCATIONNAME} ({s.ORGLOCATIONREF})
-                </option>
-              ))}
-            </select>
+            />
           </div>
 
           {/* Date Range */}

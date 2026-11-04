@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { StoreSearchSelect } from '../../components/common/StoreSearchSelect';
 import {
   exportRofSummaryToExcel,
   exportRofSummaryToPdf,
@@ -498,20 +499,14 @@ export function RofReport() {
                 <label htmlFor="rof-store-select" className="form-label small fw-semibold text-secondary">
                   Store / Location
                 </label>
-                <select
+                <StoreSearchSelect
                   id="rof-store-select"
-                  className="form-select bom-filter-input"
+                  inputClassName="form-select bom-filter-input"
+                  stores={stores}
                   value={selectedLocation}
-                  onChange={(e) => setSelectedLocation(e.target.value)}
+                  onChange={setSelectedLocation}
                   disabled={summaryLoading}
-                >
-                  {stores.length === 0 && <option value="">Loading active stores...</option>}
-                  {stores.map((s) => (
-                    <option key={s.LOCATIONID} value={s.LOCATIONNAME}>
-                      {s.LOCATIONNAME} ({s.ORGLOCATIONREF})
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* Date From */}
@@ -760,20 +755,14 @@ export function RofReport() {
                 <label htmlFor="rof-details-store" className="form-label small fw-semibold text-secondary">
                   Store / Location
                 </label>
-                <select
+                <StoreSearchSelect
                   id="rof-details-store"
-                  className="form-select bom-filter-input"
+                  inputClassName="form-select bom-filter-input"
+                  stores={stores}
                   value={selectedLocation}
-                  onChange={(e) => setSelectedLocation(e.target.value)}
+                  onChange={setSelectedLocation}
                   disabled={detailsLoading}
-                >
-                  {stores.length === 0 && <option value="">Loading active stores...</option>}
-                  {stores.map((s) => (
-                    <option key={s.LOCATIONID} value={s.LOCATIONNAME}>
-                      {s.LOCATIONNAME} ({s.ORGLOCATIONREF})
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* Business Date */}

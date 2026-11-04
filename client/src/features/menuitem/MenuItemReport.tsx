@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { StoreSearchSelect } from '../../components/common/StoreSearchSelect';
 import {
   exportMenuItemPivotToExcel,
   exportMenuItemPivotToPdf,
@@ -815,20 +816,14 @@ export function MenuItemReport() {
             </label>
             <div className="menuitem-input-with-icon">
               <StoreIcon size={15} className="menuitem-input-left-icon" />
-              <select
+              <StoreSearchSelect
                 id="menuitem-store-select"
-                className="form-select menuitem-filter-control"
+                inputClassName="form-select menuitem-filter-control"
+                stores={stores}
                 value={selectedLocation}
-                onChange={(e) => setSelectedLocation(e.target.value)}
+                onChange={setSelectedLocation}
                 disabled={isLoadingCurrentTab}
-              >
-                {stores.length === 0 && <option value="">Loading active stores...</option>}
-                {stores.map((s) => (
-                  <option key={s.LOCATIONID} value={s.LOCATIONNAME}>
-                    {s.LOCATIONNAME} ({s.ORGLOCATIONREF})
-                  </option>
-                ))}
-              </select>
+              />
             </div>
           </div>
 

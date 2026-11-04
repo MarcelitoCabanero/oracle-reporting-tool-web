@@ -12,6 +12,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { StoreSearchSelect } from '../../components/common/StoreSearchSelect';
 
 export interface StoreOption {
   LOCATIONID: number;
@@ -378,20 +379,14 @@ export function DepositMonitoring() {
             <label htmlFor="deposit-store" className="form-label small fw-semibold text-secondary">
               Store / Location
             </label>
-            <select
+            <StoreSearchSelect
               id="deposit-store"
-              className="form-select bom-filter-input"
+              inputClassName="form-select bom-filter-input"
+              stores={stores}
               value={selectedLocation}
-              onChange={(e) => setSelectedLocation(e.target.value)}
+              onChange={setSelectedLocation}
               disabled={loading}
-            >
-              {stores.length === 0 && <option value="">Loading active stores...</option>}
-              {stores.map((s) => (
-                <option key={s.LOCATIONID} value={s.LOCATIONNAME}>
-                  {s.LOCATIONNAME} ({s.ORGLOCATIONREF})
-                </option>
-              ))}
-            </select>
+            />
           </div>
 
           {/* Start Date */}
