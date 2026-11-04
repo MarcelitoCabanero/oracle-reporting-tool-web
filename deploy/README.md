@@ -48,11 +48,17 @@ A single unified production container (`oracle-reporting-web`) built on `node:22
    - **Source:** Choose **Use existing docker-compose.yml**
 4. Click **Next** → **Done** and let Container Manager build and start the container.
 
-*(Alternative via SSH)*:
+*(Alternative via SSH — One-Command Update)*:
 ```bash
 cd /volume1/docker/oracle-reporting-tool-web
-sudo docker compose up -d --build
+sudo sh deploy/update.sh
 ```
+
+The `update.sh` script automatically:
+1. Pulls the latest commits from `main` (falling back to a Docker-based git runner if git is not installed on DSM).
+2. Builds the updated client and server bundles inside the Docker container.
+3. Automatically prunes old/dangling image layers so your Synology storage never fills up.
+4. Performs a health check on `http://localhost:3001/api/health` and reports status.
 
 ### 3. Access on the LAN
 Open any browser on the company network and visit:
