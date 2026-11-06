@@ -24,6 +24,7 @@ A single unified production container (`oracle-reporting-web`) built on `node:22
    NODE_ENV=production
 
    JWT_SECRET=oracle_reporting_secret_key_change_in_production_2026
+
    ```
 
 ### 2. Deploy via Synology Container Manager (GUI)
