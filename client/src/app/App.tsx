@@ -6,6 +6,8 @@ import { BomReport } from '../features/bom/BomReport';
 import { RofReport } from '../features/rof/RofReport';
 import { DepositMonitoring } from '../features/deposit/DepositMonitoring';
 import { MenuItemReport } from '../features/menuitem/MenuItemReport';
+import { SystemSalesSummary } from '../features/systemsales/SystemSalesSummary';
+import { SessionTimeoutModal } from '../components/common/SessionTimeoutModal';
 import { useAuth } from '../features/auth/AuthContext';
 import type { Page, Theme } from '../components/navigation/Sidebar';
 import logo from '../assets/jco-logo.png';
@@ -101,14 +103,6 @@ export function App() {
 
   function renderPlaceholderPage() {
     switch (activePage) {
-      case 'system-sales':
-        return (
-          <PlaceholderPage
-            title="Variance Analysis (System Sales)"
-            description="Actual consumption scoping is in progress. Theoretical BOM requirements are currently active under the Theoretical BOM module."
-          />
-        );
-
       case 'finance-insight':
         return (
           <PlaceholderPage
@@ -176,7 +170,16 @@ export function App() {
         </div>
       )}
 
+      {(visitedPages['system-sales'] || activePage === 'system-sales') && (
+        <div style={{ display: activePage === 'system-sales' ? 'block' : 'none' }}>
+          <SystemSalesSummary />
+        </div>
+      )}
+
       {renderPlaceholderPage()}
+
+      {/* Inactivity Session Timeout Warning Modal */}
+      <SessionTimeoutModal />
     </AppLayout>
   );
 }

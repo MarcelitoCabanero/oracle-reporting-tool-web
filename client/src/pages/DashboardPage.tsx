@@ -151,7 +151,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
                   <QuickAction
                     icon={<TrendingUp size={19} className="text-secondary" />}
                     title="System Sales"
-                    description="Variance Analysis (Scoping)"
+                    description="Sales summary & tender breakdown"
                     onClick={() => onNavigate('system-sales')}
                   />
                 </div>

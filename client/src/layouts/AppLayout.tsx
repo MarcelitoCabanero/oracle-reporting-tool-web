@@ -23,7 +23,7 @@ function getPageTitle(page: Page): string {
     case 'hourly-sales':
       return 'Hourly Sales';
     case 'system-sales':
-      return 'System Sales (Variance)';
+      return 'System Sales';
     case 'menu-item':
       return 'Menu Item';
     case 'tender-listing':

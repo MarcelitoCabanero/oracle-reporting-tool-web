@@ -1,10 +1,10 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { LockKeyhole, UserRound } from 'lucide-react';
+import { Clock, LockKeyhole, UserRound } from 'lucide-react';
 import logo from '../../assets/jco-logo.png';
 import { useAuth } from './AuthContext';
 
 export function LoginForm() {
-  const { login } = useAuth();
+  const { login, sessionMessage, clearSessionMessage } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +40,7 @@ export function LoginForm() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
+    clearSessionMessage();
 
     if (!username.trim() || !password.trim()) {
       setError('Please enter your username and password.');
@@ -128,6 +129,14 @@ export function LoginForm() {
                 />
               </div>
             </div>
+
+            {/* Session Timeout Notice */}
+            {sessionMessage && (
+              <div className="saas-timeout-alert mb-3 d-flex align-items-center gap-2" role="alert">
+                <Clock size={16} className="flex-shrink-0" />
+                <span>{sessionMessage}</span>
+              </div>
+            )}
 
             {/* Error Message */}
             {error && (

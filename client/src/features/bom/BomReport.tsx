@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Calculator,
+  CalendarDays,
   FileSpreadsheet,
   FileText,
   Info,
   ListTree,
   Search,
+  Store as StoreIcon,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { StoreSearchSelect } from '../../components/common/StoreSearchSelect';
@@ -157,6 +159,11 @@ export function BomReport() {
       return;
     }
 
+    if (startDate > endDate) {
+      setErrorMessage('Date From cannot be greater than Date To.');
+      return;
+    }
+
     setErrorMessage(null);
     setIsLoading(true);
 
@@ -239,56 +246,66 @@ export function BomReport() {
         </div>
       </div>
 
-      {/* Filter Card */}
-      <div className="card border rounded-4 shadow-sm p-4 mb-4 bg-white bom-filter-card">
-        <div className="row g-3">
+      {/* Unified Filter Bar */}
+      <div className="menuitem-unified-filter-bar mb-4">
+        <div className="menuitem-filter-bar-row">
           {/* Store Location */}
-          <div className="col-12 col-md-4">
-            <label htmlFor="store-select" className="form-label small fw-semibold text-secondary">
+          <div className="menuitem-filter-group menuitem-filter-store">
+            <label htmlFor="bom-store-select" className="menuitem-filter-label">
               Store / Location
             </label>
-            <StoreSearchSelect
-              id="store-select"
-              inputClassName="form-select bom-filter-input"
-              stores={stores}
-              value={selectedLocation}
-              onChange={setSelectedLocation}
-              disabled={isLoading}
-            />
+            <div className="menuitem-input-with-icon">
+              <StoreIcon size={15} className="menuitem-input-left-icon" />
+              <StoreSearchSelect
+                id="bom-store-select"
+                inputClassName="form-select menuitem-filter-control"
+                stores={stores}
+                value={selectedLocation}
+                onChange={setSelectedLocation}
+                disabled={isLoading}
+              />
+            </div>
           </div>
 
-          {/* Date Range */}
-          <div className="col-12 col-sm-6 col-md-4">
-            <label htmlFor="start-date" className="form-label small fw-semibold text-secondary">
-              Start Date
+          {/* Business Date Range */}
+          <div className="menuitem-filter-group menuitem-filter-dates">
+            <label htmlFor="bom-date-from" className="menuitem-filter-label">
+              Business Date Range
             </label>
-            <input
-              id="start-date"
-              type="date"
-              className="form-control bom-filter-input"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              disabled={isLoading}
-            />
-          </div>
-
-          <div className="col-12 col-sm-6 col-md-4">
-            <label htmlFor="end-date" className="form-label small fw-semibold text-secondary">
-              End Date
-            </label>
-            <input
-              id="end-date"
-              type="date"
-              className="form-control bom-filter-input"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              disabled={isLoading}
-            />
+            <div className="menuitem-date-range-capsule">
+              <div className="menuitem-date-field">
+                <CalendarDays size={15} className="menuitem-input-left-icon" />
+                <input
+                  id="bom-date-from"
+                  type="date"
+                  className="form-control menuitem-date-input"
+                  value={startDate}
+                  max={todayStr}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  disabled={isLoading}
+                  aria-label="Date From"
+                />
+              </div>
+              <span className="menuitem-date-range-sep">to</span>
+              <div className="menuitem-date-field">
+                <CalendarDays size={15} className="menuitem-input-left-icon" />
+                <input
+                  id="bom-date-to"
+                  type="date"
+                  className="form-control menuitem-date-input"
+                  value={endDate}
+                  max={todayStr}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  disabled={isLoading}
+                  aria-label="Date To"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Finished Good Autocomplete */}
-          <div className="col-12 col-lg-8">
-            <label className="form-label small fw-semibold text-secondary">
+          <div className="menuitem-filter-group flex-grow-1" style={{ minWidth: 260 }}>
+            <label className="menuitem-filter-label">
               Finished Good (Optional Single Item Filter)
             </label>
             <FinishedGoodSearch
@@ -299,22 +316,22 @@ export function BomReport() {
           </div>
 
           {/* Action Button */}
-          <div className="col-12 col-lg-4 d-flex align-items-end">
+          <div className="menuitem-filter-cta">
             <button
               type="button"
-              className="btn btn-oracle-red w-100 py-2 d-flex align-items-center justify-content-center gap-2 fw-semibold"
+              className="btn menuitem-generate-btn d-inline-flex align-items-center justify-content-center gap-2"
               onClick={handleCalculate}
-              disabled={isLoading || !selectedLocation}
+              disabled={isLoading || !selectedLocation || !startDate || !endDate}
             >
               {isLoading ? (
                 <>
                   <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
-                  Calculating Multi-Level BOM...
+                  <span>Calculating...</span>
                 </>
               ) : (
                 <>
-                  <Calculator size={18} />
-                  Calculate Requirements
+                  <Calculator size={15} />
+                  <span>Calculate Requirements</span>
                 </>
               )}
             </button>

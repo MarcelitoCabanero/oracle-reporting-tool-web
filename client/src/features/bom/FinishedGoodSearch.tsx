@@ -92,7 +92,7 @@ export function FinishedGoodSearch({ selectedFg, onSelectFg, disabled }: Finishe
         <Search size={16} className="fg-search-inner-icon" aria-hidden="true" />
         <input
           type="text"
-          className="form-control bom-filter-input fg-search-input"
+          className="form-control menuitem-filter-control fg-search-input"
           placeholder="Search FG by item code or name (leave empty for All)..."
           value={searchTerm}
           onChange={(e) => {

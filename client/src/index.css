@@ -4860,6 +4860,17 @@ html[data-theme='dark'] .system-sales-toolbar-export .btn-outline-danger:hover:n
   font-weight: 500;
 }
 
+/* Session Timeout Alert */
+.saas-timeout-alert {
+  background-color: #FFFBEB;
+  border: 1px solid #FDE68A;
+  color: #92400E;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.825rem;
+  font-weight: 500;
+}
+
 /* Primary Sign In Button (Dark Charcoal #1F2937) */
 .saas-submit-btn {
   height: 44px;
@@ -5714,6 +5725,157 @@ html[data-theme='dark'] .deposit-attachment-footer {
 
 
 /* ========================================
+   SESSION INACTIVITY TIMEOUT MODAL
+   ======================================== */
+.session-timeout-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: rofFadeIn 0.2s ease-out;
+}
+
+.session-timeout-card {
+  width: 100%;
+  max-width: 440px;
+  background-color: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  border-radius: 16px;
+  padding: 32px 24px;
+  text-align: center;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.28);
+  animation: rofFadeIn 0.2s ease-out;
+}
+
+.session-timeout-icon-wrapper {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background-color: #FEF3C7;
+  color: #D97706;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.session-timeout-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.session-timeout-desc {
+  font-size: 0.885rem;
+  color: #4B5563;
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+
+.session-timeout-timer {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #D97706;
+  background-color: #FFFBEB;
+  border: 1.5px solid #FDE68A;
+  border-radius: 10px;
+  padding: 6px 24px;
+  margin-bottom: 24px;
+}
+
+.session-timeout-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-timeout-stay-btn {
+  height: 44px;
+  background-color: #1F2937 !important;
+  color: #FFFFFF !important;
+  border: 1px solid #1F2937 !important;
+  border-radius: 8px;
+  font-size: 0.925rem;
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+
+.session-timeout-stay-btn:hover {
+  background-color: #111827 !important;
+}
+
+.session-timeout-logout-btn {
+  height: 40px;
+  background-color: transparent !important;
+  color: #6B7280 !important;
+  border: 1px solid #D1D5DB !important;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.session-timeout-logout-btn:hover {
+  background-color: #F3F4F6 !important;
+  color: #1F2937 !important;
+}
+
+/* Dark Mode Overrides */
+html[data-theme='dark'] .session-timeout-card {
+  background-color: #1E293B;
+  border-color: #334155;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+}
+
+html[data-theme='dark'] .session-timeout-title {
+  color: #F8FAFC;
+}
+
+html[data-theme='dark'] .session-timeout-desc {
+  color: #94A3B8;
+}
+
+html[data-theme='dark'] .session-timeout-icon-wrapper {
+  background-color: rgba(245, 158, 11, 0.18);
+  color: #FBBF24;
+}
+
+html[data-theme='dark'] .session-timeout-timer {
+  background-color: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #FBBF24;
+}
+
+html[data-theme='dark'] .session-timeout-stay-btn {
+  background-color: #334155 !important;
+  border-color: #475569 !important;
+  color: #F8FAFC !important;
+}
+
+html[data-theme='dark'] .session-timeout-stay-btn:hover {
+  background-color: #475569 !important;
+}
+
+html[data-theme='dark'] .session-timeout-logout-btn {
+  border-color: #475569 !important;
+  color: #94A3B8 !important;
+}
+
+html[data-theme='dark'] .session-timeout-logout-btn:hover {
+  background-color: #334155 !important;
+  color: #F8FAFC !important;
+}
+
+/* ========================================
    MENU ITEM MODULE (PIVOT MATRIX & CHARTS)
    ======================================== */
 
@@ -5831,9 +5993,9 @@ html[data-theme='dark'] .deposit-attachment-footer {
   z-index: 2;
 }
 
-.menuitem-filter-control.form-select {
+.menuitem-filter-control.form-select,
+.menuitem-filter-control.form-control {
   height: 38px;
-  padding-left: 34px !important;
   padding-top: 6px !important;
   padding-bottom: 6px !important;
   font-size: 13.5px !important;
@@ -5845,7 +6007,12 @@ html[data-theme='dark'] .deposit-attachment-footer {
   box-shadow: none !important;
 }
 
-.menuitem-filter-control.form-select:focus {
+.menuitem-filter-control.form-select {
+  padding-left: 34px !important;
+}
+
+.menuitem-filter-control.form-select:focus,
+.menuitem-filter-control.form-control:focus {
   border-color: #4F46E5 !important;
   box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12) !important;
 }
@@ -5884,19 +6051,22 @@ html[data-theme='dark'] .deposit-attachment-footer {
   font-weight: 500;
   color: #111827;
   box-shadow: none !important;
-  cursor: pointer;
+  cursor: text;
 }
 
-/* Hide duplicate browser right-side calendar icon while making the whole date input clickable */
+/* Position native calendar picker trigger strictly over the left icon area so clicking the date text focuses and enables typing */
 .menuitem-date-input::-webkit-calendar-picker-indicator {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
   margin: 0;
   padding: 0;
   opacity: 0;
   cursor: pointer;
+  z-index: 3;
 }
 
 .menuitem-date-range-sep {
@@ -6903,6 +7073,7 @@ html[data-theme='dark'] .menuitem-input-left-icon {
 }
 
 html[data-theme='dark'] .menuitem-filter-control.form-select,
+html[data-theme='dark'] .menuitem-filter-control.form-control,
 html[data-theme='dark'] .menuitem-date-range-capsule {
   background-color: #0F172A;
   border-color: #334155 !important;

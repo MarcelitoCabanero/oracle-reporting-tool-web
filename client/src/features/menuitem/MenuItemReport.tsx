@@ -840,7 +840,7 @@ export function MenuItemReport() {
                   type="date"
                   className="form-control menuitem-date-input"
                   value={dateFrom}
-                  max={dateTo || todayString()}
+                  max={todayString()}
                   onChange={(e) => setDateFrom(e.target.value)}
                   disabled={isLoadingCurrentTab}
                   aria-label="Date From"
@@ -854,7 +854,6 @@ export function MenuItemReport() {
                   type="date"
                   className="form-control menuitem-date-input"
                   value={dateTo}
-                  min={dateFrom}
                   max={todayString()}
                   onChange={(e) => setDateTo(e.target.value)}
                   disabled={isLoadingCurrentTab}
