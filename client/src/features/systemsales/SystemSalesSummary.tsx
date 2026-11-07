@@ -14,6 +14,7 @@ import {
   Store as StoreIcon,
   Tag,
   TrendingUp,
+  XCircle,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { StoreSearchSelect, type StoreSearchOption } from '../../components/common/StoreSearchSelect';
@@ -22,10 +23,12 @@ import {
   exportSystemSalesToPdf,
   type SystemSalesData,
 } from './systemSalesExportUtils';
+import { VoidSummaryReport } from './VoidSummaryReport';
 
 const SYSTEM_SALES_SESSION_KEY = 'oracle-session-system-sales';
 
 interface SystemSalesSavedSession {
+  activeTab?: 'summary' | 'void';
   selectedLocation: string;
   dateFrom: string;
   dateTo: string;
@@ -49,11 +52,13 @@ function todayString(): string {
   return `${y}-${m}-${d}`;
 }
 
-function firstDayOfMonthString(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}-01`;
+function yesterdayString(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function formatMoney(value: number): string {
@@ -77,15 +82,20 @@ export function SystemSalesSummary() {
   const { token } = useAuth();
   const saved = useMemo(() => loadSession(), []);
 
+  // Active Module Tab
+  const [activeTab, setActiveTab] = useState<'summary' | 'void'>(
+    () => saved.activeTab ?? 'summary'
+  );
+
   // Store options
   const [stores, setStores] = useState<StoreSearchOption[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string>(
     () => saved.selectedLocation ?? ''
   );
   const [dateFrom, setDateFrom] = useState<string>(
-    () => saved.dateFrom ?? firstDayOfMonthString()
+    () => saved.dateFrom ?? yesterdayString()
   );
-  const [dateTo, setDateTo] = useState<string>(() => saved.dateTo ?? todayString());
+  const [dateTo, setDateTo] = useState<string>(() => saved.dateTo ?? yesterdayString());
 
   // Report State
   const [reportData, setReportData] = useState<SystemSalesData | null>(
@@ -98,6 +108,7 @@ export function SystemSalesSummary() {
   useEffect(() => {
     try {
       const payload: SystemSalesSavedSession = {
+        activeTab,
         selectedLocation,
         dateFrom,
         dateTo,
@@ -107,7 +118,7 @@ export function SystemSalesSummary() {
     } catch {
       // Ignore quota errors
     }
-  }, [selectedLocation, dateFrom, dateTo, reportData]);
+  }, [activeTab, selectedLocation, dateFrom, dateTo, reportData]);
 
   // Fetch active store locations on mount
   useEffect(() => {
@@ -193,17 +204,57 @@ export function SystemSalesSummary() {
       <div className="menuitem-header-bar mb-3">
         <div className="d-flex align-items-center gap-3 min-w-0">
           <div className="bom-header-icon-badge d-flex align-items-center justify-content-center rounded-3 flex-shrink-0">
-            <ReceiptText size={20} />
+            {activeTab === 'summary' ? <ReceiptText size={20} /> : <XCircle size={20} />}
           </div>
           <div className="min-w-0">
-            <h2 className="h5 fw-bold mb-0 bom-main-heading">System Sales Summary</h2>
+            <h2 className="h5 fw-bold mb-0 bom-main-heading">
+              {activeTab === 'summary' ? 'System Sales Summary' : 'Void Summary'}
+            </h2>
             <p className="menuitem-subtitle mb-0">
-              Consolidated daily sales reporting, VAT, discounts, other adjustments, and tender breakdowns.
+              {activeTab === 'summary'
+                ? 'Consolidated daily sales reporting, VAT, discounts, other adjustments, and tender breakdowns.'
+                : 'Audits for void transactions, cancellation processing intervals, and item-level cancellations.'}
             </p>
           </div>
         </div>
+
+        {/* Tab Switcher */}
+        <div className="menuitem-tab-switcher" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'summary'}
+            className={`menuitem-tab-btn ${activeTab === 'summary' ? 'active' : ''}`}
+            onClick={() => setActiveTab('summary')}
+          >
+            <ReceiptText size={15} />
+            <span>Sales Summary</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'void'}
+            className={`menuitem-tab-btn ${activeTab === 'void' ? 'active' : ''}`}
+            onClick={() => setActiveTab('void')}
+          >
+            <XCircle size={15} />
+            <span>Void Summary</span>
+          </button>
+        </div>
       </div>
 
+      {activeTab === 'void' ? (
+        <VoidSummaryReport
+          stores={stores}
+          selectedLocation={selectedLocation}
+          onSelectLocation={setSelectedLocation}
+          dateFrom={dateFrom}
+          onDateFromChange={setDateFrom}
+          dateTo={dateTo}
+          onDateToChange={setDateTo}
+        />
+      ) : (
+        <>
       {/* Unified Filter Bar */}
       <div className="menuitem-unified-filter-bar mb-3">
         <div className="menuitem-filter-bar-row">
@@ -617,6 +668,8 @@ export function SystemSalesSummary() {
             </p>
           </div>
         )
+      )}
+        </>
       )}
     </div>
   );

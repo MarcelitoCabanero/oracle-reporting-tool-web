@@ -5414,6 +5414,46 @@ html[data-theme='dark'] .rof-export-btn-pdf:hover:not(:disabled) {
   color: #FFFFFF;
 }
 
+/* ========================================
+   VOID SUMMARY REPORT TABLE & HOVER STYLES
+   ======================================== */
+.void-summary-table {
+  width: 100%;
+}
+
+.void-summary-table tbody tr.void-row-clickable {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.void-summary-table tbody tr.void-row-clickable:hover td {
+  background-color: #F8FAFC !important;
+}
+
+.void-summary-table tbody tr.void-row-expanded td {
+  background-color: #F1F5F9 !important;
+}
+
+html[data-theme='dark'] .void-summary-table tbody tr.void-row-clickable:hover td {
+  background-color: #263548 !important;
+}
+
+html[data-theme='dark'] .void-summary-table tbody tr.void-row-expanded td {
+  background-color: #1E293B !important;
+}
+
+.void-subtable-container {
+  background-color: #F8FAFC;
+  border-left: 3px solid var(--brand-orange, #EA580C);
+  border-radius: 8px;
+  padding: 14px 18px;
+}
+
+html[data-theme='dark'] .void-subtable-container {
+  background-color: #0F172A;
+  border-left-color: var(--brand-orange, #EA580C);
+}
+
 html[data-theme='dark'] .rof-drawer-header-divider {
   background-color: #334155;
 }

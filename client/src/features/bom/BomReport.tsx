@@ -50,6 +50,15 @@ function loadBomSession(): Partial<BomSavedSession> {
   }
 }
 
+function yesterdayString(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function BomReport() {
   const { token } = useAuth();
   const savedSession = useMemo(() => loadBomSession(), []);
@@ -60,10 +69,11 @@ export function BomReport() {
     () => savedSession.selectedLocation ?? ''
   );
 
-  // Date filters
+  // Date filters (defaults to yesterday)
   const todayStr = new Date().toISOString().split('T')[0] ?? '';
-  const [startDate, setStartDate] = useState<string>(() => savedSession.startDate ?? todayStr);
-  const [endDate, setEndDate] = useState<string>(() => savedSession.endDate ?? todayStr);
+  const yesterdayStr = yesterdayString();
+  const [startDate, setStartDate] = useState<string>(() => savedSession.startDate ?? yesterdayStr);
+  const [endDate, setEndDate] = useState<string>(() => savedSession.endDate ?? yesterdayStr);
 
   // Finished Good filter
   const [selectedFg, setSelectedFg] = useState<FinishedGood | null>(

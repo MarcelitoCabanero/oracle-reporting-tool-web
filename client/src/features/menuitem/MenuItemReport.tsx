@@ -90,11 +90,13 @@ function todayString(): string {
   return `${y}-${m}-${d}`;
 }
 
-function firstDayOfMonthString(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}-01`;
+function yesterdayString(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function formatMoney(value: number): string {
@@ -199,9 +201,9 @@ export function MenuItemReport() {
     () => savedSession.selectedLocation ?? ''
   );
   const [dateFrom, setDateFrom] = useState<string>(
-    () => savedSession.dateFrom ?? firstDayOfMonthString()
+    () => savedSession.dateFrom ?? yesterdayString()
   );
-  const [dateTo, setDateTo] = useState<string>(() => savedSession.dateTo ?? todayString());
+  const [dateTo, setDateTo] = useState<string>(() => savedSession.dateTo ?? yesterdayString());
 
   // Tab 1: Menu Item by Sales Type state
   const [salesTypeRows, setSalesTypeRows] = useState<MenuItemSalesTypeRow[]>(
