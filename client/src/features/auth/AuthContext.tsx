@@ -56,12 +56,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback((reason?: string) => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(LAST_ACTIVITY_KEY);
-    sessionStorage.removeItem('oracle-reporting-active-page');
-    sessionStorage.removeItem('oracle-session-bom');
-    sessionStorage.removeItem('oracle-session-rof');
-    sessionStorage.removeItem('oracle-session-deposit');
-    sessionStorage.removeItem('oracle-session-menuitem');
-    sessionStorage.removeItem('oracle-session-system-sales');
+    try {
+      sessionStorage.clear();
+    } catch {
+      // Fallback manual key removal if clear is restricted
+      sessionStorage.removeItem('oracle-reporting-active-page');
+      sessionStorage.removeItem('oracle-session-bom');
+      sessionStorage.removeItem('oracle-session-rof');
+      sessionStorage.removeItem('oracle-session-deposit');
+      sessionStorage.removeItem('oracle-session-menuitem');
+      sessionStorage.removeItem('oracle-session-system-sales');
+      sessionStorage.removeItem('oracle-session-void-summary');
+    }
     setToken(null);
     setUser(null);
     setIsExpiringSoon(false);
