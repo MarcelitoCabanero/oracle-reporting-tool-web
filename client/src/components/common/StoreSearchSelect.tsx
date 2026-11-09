@@ -9,22 +9,30 @@ export interface StoreSearchOption {
 interface StoreSearchSelectProps {
   id: string;
   stores: StoreSearchOption[];
-  /** Selected LOCATIONNAME (e.g. "PH002-MOA") */
+  /** Selected LOCATIONNAME (e.g. "PH002-MOA" or "ALL") */
   value: string;
   onChange: (locationName: string) => void;
   disabled?: boolean;
   /** Classes applied to the text input so it matches the surrounding filter styling */
   inputClassName?: string;
   placeholder?: string;
+  /** When true, prepends an "ALL STORES" option to the dropdown list */
+  includeAllOption?: boolean;
+  /** Custom label for the ALL option */
+  allOptionLabel?: string;
 }
 
 /** "PH002-MOA" -> "MOA" */
 function getStoreCode(locationName: string): string {
+  if (locationName === 'ALL') return 'ALL';
   const idx = locationName.lastIndexOf('-');
   return idx >= 0 ? locationName.slice(idx + 1).trim() : locationName.trim();
 }
 
 function formatStoreLabel(store: StoreSearchOption): string {
+  if (store.LOCATIONNAME === 'ALL') {
+    return store.ORGLOCATIONREF || 'ALL STORES (Consolidated)';
+  }
   return `${store.LOCATIONNAME} (${store.ORGLOCATIONREF})`;
 }
 
@@ -57,10 +65,22 @@ export function StoreSearchSelect({
   disabled = false,
   inputClassName = 'form-select',
   placeholder = 'Type store code (e.g. MOA) or select...',
+  includeAllOption = false,
+  allOptionLabel = 'ALL STORES (Consolidated)',
 }: StoreSearchSelectProps) {
+  const effectiveStores = useMemo<StoreSearchOption[]>(() => {
+    if (!includeAllOption) return stores;
+    const allEntry: StoreSearchOption = {
+      LOCATIONID: -1,
+      LOCATIONNAME: 'ALL',
+      ORGLOCATIONREF: allOptionLabel,
+    };
+    return [allEntry, ...stores];
+  }, [stores, includeAllOption, allOptionLabel]);
+
   const selectedStore = useMemo(
-    () => stores.find((s) => s.LOCATIONNAME === value) ?? null,
-    [stores, value]
+    () => effectiveStores.find((s) => s.LOCATIONNAME === value) ?? null,
+    [effectiveStores, value]
   );
   const selectedLabel = selectedStore ? formatStoreLabel(selectedStore) : '';
 
@@ -76,13 +96,13 @@ export function StoreSearchSelect({
   const trimmedQuery = query.trim().toLowerCase();
 
   const filteredStores = useMemo(() => {
-    if (!isEditing || !trimmedQuery) return stores;
-    return stores
+    if (!isEditing || !trimmedQuery) return effectiveStores;
+    return effectiveStores
       .map((s) => ({ store: s, score: scoreStore(s, trimmedQuery) }))
       .filter((x) => x.score >= 0)
       .sort((a, b) => a.score - b.score || a.store.LOCATIONNAME.localeCompare(b.store.LOCATIONNAME))
       .map((x) => x.store);
-  }, [stores, trimmedQuery, isEditing]);
+  }, [effectiveStores, trimmedQuery, isEditing]);
 
   // Close when clicking outside
   useEffect(() => {
@@ -127,9 +147,9 @@ export function StoreSearchSelect({
 
     // Auto-load when the typed text is an exact store code / name / ref match
     // and no other store code still begins with the typed text (avoids hijacking "MOA" vs "MOAX").
-    const exactMatches = stores.filter((s) => scoreStore(s, q) === 0);
+    const exactMatches = effectiveStores.filter((s) => scoreStore(s, q) === 0);
     if (exactMatches.length === 1) {
-      const competingPrefix = stores.filter(
+      const competingPrefix = effectiveStores.filter(
         (s) =>
           s.LOCATIONNAME !== exactMatches[0].LOCATIONNAME &&
           getStoreCode(s.LOCATIONNAME).toLowerCase().startsWith(q)
@@ -173,9 +193,9 @@ export function StoreSearchSelect({
   };
 
   const openList = () => {
-    if (disabled || stores.length === 0) return;
+    if (disabled || effectiveStores.length === 0) return;
     setIsOpen(true);
-    const idx = stores.findIndex((s) => s.LOCATIONNAME === value);
+    const idx = effectiveStores.findIndex((s) => s.LOCATIONNAME === value);
     setHighlightIndex(idx >= 0 ? idx : 0);
   };
 
@@ -196,8 +216,8 @@ export function StoreSearchSelect({
         spellCheck={false}
         className={`${inputClassName} store-search-input`}
         value={displayValue}
-        placeholder={stores.length === 0 ? 'Loading active stores...' : placeholder}
-        disabled={disabled || stores.length === 0}
+        placeholder={effectiveStores.length === 0 ? 'Loading active stores...' : placeholder}
+        disabled={disabled || effectiveStores.length === 0}
         onFocus={(e) => {
           e.target.select();
           openList();

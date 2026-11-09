@@ -7,6 +7,7 @@ import { RofReport } from '../features/rof/RofReport';
 import { DepositMonitoring } from '../features/deposit/DepositMonitoring';
 import { MenuItemReport } from '../features/menuitem/MenuItemReport';
 import { SystemSalesSummary } from '../features/systemsales/SystemSalesSummary';
+import { PromotionsReport } from '../features/promotions/PromotionsReport';
 import { SessionTimeoutModal } from '../components/common/SessionTimeoutModal';
 import { useAuth } from '../features/auth/AuthContext';
 import type { Page, Theme } from '../components/navigation/Sidebar';
@@ -22,6 +23,7 @@ const validPages: Page[] = [
   'hourly-sales',
   'system-sales',
   'menu-item',
+  'promotions',
   'tender-listing',
   'rof',
   'deposit',
@@ -173,6 +175,12 @@ export function App() {
       {(visitedPages['system-sales'] || activePage === 'system-sales') && (
         <div style={{ display: activePage === 'system-sales' ? 'block' : 'none' }}>
           <SystemSalesSummary />
+        </div>
+      )}
+
+      {(visitedPages.promotions || activePage === 'promotions') && (
+        <div style={{ display: activePage === 'promotions' ? 'block' : 'none' }}>
+          <PromotionsReport />
         </div>
       )}
 

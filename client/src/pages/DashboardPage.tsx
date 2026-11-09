@@ -9,6 +9,7 @@ import {
   ReceiptText,
   ShieldCheck,
   Store,
+  Tag,
   TrendingUp,
 } from 'lucide-react';
 import type { Page } from '../components/navigation/Sidebar';
@@ -171,6 +172,15 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
                     title="Menu Item Sales"
                     description="Sales Type Matrix & Summary"
                     onClick={() => onNavigate('menu-item')}
+                  />
+                </div>
+
+                <div className="col-12 col-md-6">
+                  <QuickAction
+                    icon={<Tag size={19} className="text-secondary" />}
+                    title="Promotion Monitoring"
+                    description="Track promos, receipt items & performance"
+                    onClick={() => onNavigate('promotions')}
                   />
                 </div>
               </div>

@@ -26,6 +26,8 @@ function getPageTitle(page: Page): string {
       return 'System Sales';
     case 'menu-item':
       return 'Menu Item';
+    case 'promotions':
+      return 'Promotion Monitoring & Analytics';
     case 'tender-listing':
       return 'Tender Listing';
     case 'rof':

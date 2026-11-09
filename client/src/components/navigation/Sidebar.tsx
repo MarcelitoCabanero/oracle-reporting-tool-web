@@ -14,6 +14,7 @@ import {
   Moon,
   ReceiptText,
   Sun,
+  Tag,
   WalletCards,
 } from 'lucide-react';
 import logo from '../../assets/jco-logo.png';
@@ -25,6 +26,7 @@ export type Page =
   | 'hourly-sales'
   | 'system-sales'
   | 'menu-item'
+  | 'promotions'
   | 'tender-listing'
   | 'rof'
   | 'deposit';
@@ -135,6 +137,7 @@ export function Sidebar({ activePage, collapsed, onToggleCollapse, theme, onThem
           <NavItem label="Hourly Sales" page="hourly-sales" icon={<Clock3 size={18} />} activePage={activePage} collapsed={collapsed} onNavigate={onNavigate} disabled />
           <NavItem label="System Sales" page="system-sales" icon={<FileBarChart size={18} />} activePage={activePage} collapsed={collapsed} onNavigate={onNavigate} />
           <NavItem label="Menu Item" page="menu-item" icon={<Menu size={18} />} activePage={activePage} collapsed={collapsed} onNavigate={onNavigate} />
+          <NavItem label="Promotions" page="promotions" icon={<Tag size={18} />} activePage={activePage} collapsed={collapsed} onNavigate={onNavigate} />
         </SidebarSection>
 
         <SidebarSection title="FINANCE" collapsed={collapsed}>
