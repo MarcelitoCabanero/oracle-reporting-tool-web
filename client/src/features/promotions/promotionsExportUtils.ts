@@ -22,6 +22,9 @@ export interface ConsolidatedPromoRow {
   qty: number;
   amt: number;
   netSales: number;
+  topStoreName?: string;
+  topStoreAmt?: number;
+  topStoreQty?: number;
 }
 
 export interface StorePromoPerformanceRow {

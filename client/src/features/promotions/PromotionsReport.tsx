@@ -1,13 +1,28 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type RefObject,
+} from 'react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Award,
   BarChart3,
   CalendarDays,
   Eye,
   FileSpreadsheet,
   FileText,
+  GitCompare,
   Info,
   PackageCheck,
+  Pin,
+  PinOff,
+  Receipt,
   RefreshCw,
   Search,
   ShoppingBag,
@@ -30,6 +45,7 @@ import {
   type PromotionCheckDetailsResponse,
   type PromotionDailyTrendRow,
   type PromotionFilterMeta,
+  type PromotionPairedItem,
   type PromotionSummaryRow,
   type StorePromoPerformanceRow,
 } from './promotionsExportUtils';
@@ -39,6 +55,27 @@ type GroupMode = 'store-item' | 'consolidated';
 type TrendGranularity = 'daily' | 'monthly';
 type ChartMetricMode = 'amt' | 'qty';
 type TrendSortOrder = 'chronological' | 'desc' | 'asc';
+type TableSortDirection = 'asc' | 'desc';
+
+type StoreItemSortField =
+  | 'locationName'
+  | 'itemNumber'
+  | 'itemName'
+  | 'checkCount'
+  | 'qty'
+  | 'avgPrice'
+  | 'amt'
+  | 'share';
+
+type ConsolidatedSortField =
+  | 'itemNumber'
+  | 'itemName'
+  | 'storeCount'
+  | 'checkCount'
+  | 'qty'
+  | 'avgPrice'
+  | 'amt'
+  | 'share';
 
 const PROMOTIONS_SESSION_KEY = 'oracle-session-promotions';
 
@@ -61,6 +98,9 @@ interface PromotionsSavedSession {
   topPromoMetric: ChartMetricMode;
   storeRankMetric: ChartMetricMode;
   storeChartSortOrder?: 'desc' | 'asc' | 'alpha';
+  pinnedPromoIds?: string[];
+  storeItemSort?: { field: StoreItemSortField; dir: TableSortDirection };
+  consolidatedSort?: { field: ConsolidatedSortField; dir: TableSortDirection };
 }
 
 function loadPromotionsSession(): Partial<PromotionsSavedSession> {
@@ -249,11 +289,30 @@ export function PromotionsReport() {
   const [hoveredStoreIndex, setHoveredStoreIndex] = useState<number | null>(null);
   const [showChartInfo, setShowChartInfo] = useState<boolean>(false);
 
-  // Drill-down state (Items Used in Promo)
+  // Table sorting & Pin-to-Compare Matrix state
+  const [pinnedPromoIds, setPinnedPromoIds] = useState<string[]>(
+    () => savedSession.pinnedPromoIds ?? []
+  );
+  const [userClearedPins, setUserClearedPins] = useState<boolean>(false);
+  const [storeItemSort, setStoreItemSort] = useState<{
+    field: StoreItemSortField;
+    dir: TableSortDirection;
+  }>(() => savedSession.storeItemSort ?? { field: 'amt', dir: 'desc' });
+  const [consolidatedSort, setConsolidatedSort] = useState<{
+    field: ConsolidatedSortField;
+    dir: TableSortDirection;
+  }>(() => savedSession.consolidatedSort ?? { field: 'amt', dir: 'desc' });
+  const [showAllLeaderboardPromos, setShowAllLeaderboardPromos] = useState<boolean>(false);
+
+  // Drill-down state (Items Used in Promo + per-plan cache for Pin-to-Compare Matrix)
   const [drilldownLoading, setDrilldownLoading] = useState<boolean>(false);
   const [drilldownError, setDrilldownError] = useState<string | null>(null);
   const [activeDrilldown, setActiveDrilldown] =
     useState<PromotionCheckDetailsResponse | null>(null);
+  const [drilldownByPromo, setDrilldownByPromo] = useState<
+    Record<string, PromotionCheckDetailsResponse>
+  >({});
+  const [loadingPromoMap, setLoadingPromoMap] = useState<Record<string, boolean>>({});
   const [drilldownMajorGroup, setDrilldownMajorGroup] = useState<string>('');
   const [drilldownRoleFilter, setDrilldownRoleFilter] = useState<
     'all' | 'target' | 'zero-price' | 'co-sold'
@@ -282,6 +341,9 @@ export function PromotionsReport() {
         topPromoMetric,
         storeRankMetric,
         storeChartSortOrder,
+        pinnedPromoIds,
+        storeItemSort,
+        consolidatedSort,
       };
       window.sessionStorage.setItem(PROMOTIONS_SESSION_KEY, JSON.stringify(payload));
     } catch {
@@ -306,6 +368,9 @@ export function PromotionsReport() {
     topPromoMetric,
     storeRankMetric,
     storeChartSortOrder,
+    pinnedPromoIds,
+    storeItemSort,
+    consolidatedSort,
   ]);
 
   // Fetch active physical stores AND promotion catalog from dts_object on mount
@@ -369,7 +434,9 @@ export function PromotionsReport() {
     setError(null);
     setLoading(true);
     setActiveDrilldown(null);
+    setDrilldownByPromo({});
     setDrilldownError(null);
+    setUserClearedPins(false);
 
     const filterItemNum =
       selectedCatalogPromo && selectedCatalogPromo !== 'ALL' ? selectedCatalogPromo : '';
@@ -402,6 +469,7 @@ export function PromotionsReport() {
       setSelectedPromoItem('');
       setSelectedStoreFilter('');
       setSearchQuery('');
+      setPinnedPromoIds([]);
       setTrendGranularity(loadedTrend.length > 45 ? 'monthly' : 'daily');
       setLoadedFilters({
         locationName: selectedLocation,
@@ -422,6 +490,8 @@ export function PromotionsReport() {
     itemNumber: string;
     itemName: string;
     locationName?: string;
+    preserveScroll?: boolean;
+    cacheOnly?: boolean;
   }) {
     if (!loadedFilters) return;
 
@@ -430,10 +500,13 @@ export function PromotionsReport() {
         ? params.locationName
         : selectedStoreFilter || loadedFilters.locationName;
 
-    setDrilldownLoading(true);
-    setDrilldownError(null);
-    setDrilldownMajorGroup('');
-    setDrilldownRoleFilter('all');
+    if (!params.cacheOnly) {
+      setDrilldownLoading(true);
+      setDrilldownError(null);
+      setDrilldownMajorGroup('');
+      setDrilldownRoleFilter('all');
+    }
+    setLoadingPromoMap((prev) => ({ ...prev, [params.itemNumber]: true }));
 
     try {
       const res = await fetch('/api/reports/promotions/check-details', {
@@ -456,15 +529,30 @@ export function PromotionsReport() {
         throw new Error(data.error || 'Failed to load promotion check details.');
       }
 
-      setActiveDrilldown(data as PromotionCheckDetailsResponse);
+      const detailPayload = data as PromotionCheckDetailsResponse;
+      setDrilldownByPromo((prev) => ({
+        ...prev,
+        [params.itemNumber]: detailPayload,
+      }));
 
-      requestAnimationFrame(() => {
-        drilldownPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      });
+      if (!params.cacheOnly) {
+        setActiveDrilldown(detailPayload);
+
+        if (!params.preserveScroll) {
+          requestAnimationFrame(() => {
+            drilldownPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          });
+        }
+      }
     } catch (err) {
-      setDrilldownError((err as Error).message);
+      if (!params.cacheOnly) {
+        setDrilldownError((err as Error).message);
+      }
     } finally {
-      setDrilldownLoading(false);
+      if (!params.cacheOnly) {
+        setDrilldownLoading(false);
+      }
+      setLoadingPromoMap((prev) => ({ ...prev, [params.itemNumber]: false }));
     }
   }
 
@@ -512,7 +600,7 @@ export function PromotionsReport() {
     });
   }, [rows, selectedPromoItem, selectedStoreFilter, searchQuery]);
 
-  // Consolidated by Promotion Item across stores
+  // Consolidated by Promotion Item across stores (with Top Store per plan)
   const consolidatedPromos = useMemo<ConsolidatedPromoRow[]>(() => {
     const map = new Map<
       string,
@@ -521,6 +609,7 @@ export function PromotionsReport() {
         itemName: string;
         familyGroup: string;
         stores: Set<string>;
+        storeMetrics: Map<string, { amt: number; qty: number }>;
         checkCount: number;
         qty: number;
         amt: number;
@@ -537,6 +626,7 @@ export function PromotionsReport() {
           itemName: r.itemName,
           familyGroup: r.familyGroup,
           stores: new Set<string>(),
+          storeMetrics: new Map<string, { amt: number; qty: number }>(),
           checkCount: 0,
           qty: 0,
           amt: 0,
@@ -544,7 +634,13 @@ export function PromotionsReport() {
         };
         map.set(key, entry);
       }
-      if (r.locationName) entry.stores.add(r.locationName);
+      if (r.locationName) {
+        entry.stores.add(r.locationName);
+        const currStore = entry.storeMetrics.get(r.locationName) ?? { amt: 0, qty: 0 };
+        currStore.amt += r.amt;
+        currStore.qty += r.qty;
+        entry.storeMetrics.set(r.locationName, currStore);
+      }
       entry.checkCount += r.checkCount;
       entry.qty += r.qty;
       entry.amt += r.amt;
@@ -552,16 +648,31 @@ export function PromotionsReport() {
     }
 
     return Array.from(map.values())
-      .map((e) => ({
-        itemNumber: e.itemNumber,
-        itemName: e.itemName,
-        familyGroup: e.familyGroup,
-        storeCount: e.stores.size,
-        checkCount: e.checkCount,
-        qty: e.qty,
-        amt: e.amt,
-        netSales: e.netSales,
-      }))
+      .map((e) => {
+        let topStoreName = '—';
+        let topStoreAmt = 0;
+        let topStoreQty = 0;
+        for (const [loc, st] of e.storeMetrics.entries()) {
+          if (st.amt > topStoreAmt || (st.amt === topStoreAmt && st.qty > topStoreQty)) {
+            topStoreName = loc;
+            topStoreAmt = st.amt;
+            topStoreQty = st.qty;
+          }
+        }
+        return {
+          itemNumber: e.itemNumber,
+          itemName: e.itemName,
+          familyGroup: e.familyGroup,
+          storeCount: e.stores.size,
+          checkCount: e.checkCount,
+          qty: e.qty,
+          amt: e.amt,
+          netSales: e.netSales,
+          topStoreName,
+          topStoreAmt,
+          topStoreQty,
+        };
+      })
       .sort((a, b) => b.amt - a.amt || b.qty - a.qty);
   }, [filteredRows]);
 
@@ -757,7 +868,7 @@ export function PromotionsReport() {
     };
   }, [filteredRows]);
 
-  // Top 10 Promotions for Ranking Chart
+  // Top Promotions for Leaderboard
   const top10Promos = useMemo(() => {
     return [...consolidatedPromos]
       .sort((a, b) =>
@@ -765,6 +876,180 @@ export function PromotionsReport() {
       )
       .slice(0, 10);
   }, [consolidatedPromos, topPromoMetric]);
+
+  const leaderboardPromos = useMemo(() => {
+    const sorted = [...consolidatedPromos].sort((a, b) =>
+      topPromoMetric === 'amt' ? b.amt - a.amt || b.qty - a.qty : b.qty - a.qty || b.amt - a.amt
+    );
+    return showAllLeaderboardPromos ? sorted : sorted.slice(0, 10);
+  }, [consolidatedPromos, topPromoMetric, showAllLeaderboardPromos]);
+
+  // Auto-seed Pin-to-Compare Matrix with top 3 plans (2–4 plans) when results load
+  useEffect(() => {
+    if (consolidatedPromos.length === 0) return;
+    setPinnedPromoIds((curr) => {
+      const validExisting = curr.filter((id) =>
+        consolidatedPromos.some((p) => p.itemNumber === id)
+      );
+      if (validExisting.length > 0) {
+        return validExisting.length === curr.length ? curr : validExisting;
+      }
+      if (userClearedPins) return [];
+      return consolidatedPromos.slice(0, Math.min(3, consolidatedPromos.length)).map((p) => p.itemNumber);
+    });
+  }, [consolidatedPromos, userClearedPins]);
+
+  // Resolved Pinned Plans (2–4 plans) for the Pin-to-Compare Matrix
+  const pinnedPlans = useMemo<ConsolidatedPromoRow[]>(() => {
+    const map = new Map(consolidatedPromos.map((p) => [p.itemNumber, p]));
+    return pinnedPromoIds
+      .map((id) => map.get(id))
+      .filter((p): p is ConsolidatedPromoRow => Boolean(p))
+      .slice(0, 4);
+  }, [consolidatedPromos, pinnedPromoIds]);
+
+  const compareStats = useMemo(() => {
+    let maxAmt = 0;
+    let maxQty = 0;
+    let maxChecks = 0;
+    let maxAvgPrice = 0;
+    let maxStoreCount = 0;
+    for (const p of pinnedPlans) {
+      const avgP = p.qty > 0 ? p.amt / p.qty : 0;
+      if (p.amt > maxAmt) maxAmt = p.amt;
+      if (p.qty > maxQty) maxQty = p.qty;
+      if (p.checkCount > maxChecks) maxChecks = p.checkCount;
+      if (avgP > maxAvgPrice) maxAvgPrice = avgP;
+      if (p.storeCount > maxStoreCount) maxStoreCount = p.storeCount;
+    }
+    return { maxAmt, maxQty, maxChecks, maxAvgPrice, maxStoreCount };
+  }, [pinnedPlans]);
+
+  function togglePinPromo(itemNumber: string) {
+    setUserClearedPins(false);
+    setPinnedPromoIds((curr) => {
+      if (curr.includes(itemNumber)) {
+        const next = curr.filter((id) => id !== itemNumber);
+        if (next.length === 0) setUserClearedPins(true);
+        return next;
+      }
+      if (curr.length >= 4) {
+        return [...curr.slice(1), itemNumber];
+      }
+      return [...curr, itemNumber];
+    });
+  }
+
+  function handlePinTopPlans(count = 3) {
+    setUserClearedPins(false);
+    const source = top10Promos.length > 0 ? top10Promos : consolidatedPromos;
+    setPinnedPromoIds(source.slice(0, Math.min(4, Math.max(2, count))).map((p) => p.itemNumber));
+  }
+
+  function handleClearPins() {
+    setUserClearedPins(true);
+    setPinnedPromoIds([]);
+  }
+
+  function handleLoadPinnedReceiptItems() {
+    for (const plan of pinnedPlans) {
+      if (!drilldownByPromo[plan.itemNumber] && !loadingPromoMap[plan.itemNumber]) {
+        void handleInspectPromoDetails({
+          itemNumber: plan.itemNumber,
+          itemName: plan.itemName,
+          preserveScroll: true,
+          cacheOnly: true,
+        });
+      }
+    }
+  }
+
+  // Click-to-sort handlers and sorted datasets for Store-Item and Consolidated tables
+  function handleStoreItemSort(field: StoreItemSortField) {
+    setStoreItemSort((curr) => {
+      if (curr.field === field) {
+        return { field, dir: curr.dir === 'desc' ? 'asc' : 'desc' };
+      }
+      const defaultAsc =
+        field === 'locationName' || field === 'itemNumber' || field === 'itemName';
+      return { field, dir: defaultAsc ? 'asc' : 'desc' };
+    });
+  }
+
+  function handleConsolidatedSort(field: ConsolidatedSortField) {
+    setConsolidatedSort((curr) => {
+      if (curr.field === field) {
+        return { field, dir: curr.dir === 'desc' ? 'asc' : 'desc' };
+      }
+      const defaultAsc = field === 'itemNumber' || field === 'itemName';
+      return { field, dir: defaultAsc ? 'asc' : 'desc' };
+    });
+  }
+
+  const sortedFilteredRows = useMemo(() => {
+    const dirMul = storeItemSort.dir === 'asc' ? 1 : -1;
+    return [...filteredRows].sort((a, b) => {
+      switch (storeItemSort.field) {
+        case 'locationName':
+          return (
+            dirMul * a.locationName.localeCompare(b.locationName) ||
+            b.amt - a.amt
+          );
+        case 'itemNumber':
+          return (
+            dirMul *
+              a.itemNumber.localeCompare(b.itemNumber, undefined, { numeric: true }) ||
+            b.amt - a.amt
+          );
+        case 'itemName':
+          return dirMul * a.itemName.localeCompare(b.itemName) || b.amt - a.amt;
+        case 'checkCount':
+          return dirMul * (a.checkCount - b.checkCount) || b.amt - a.amt;
+        case 'qty':
+          return dirMul * (a.qty - b.qty) || b.amt - a.amt;
+        case 'avgPrice': {
+          const avgA = a.qty > 0 ? a.amt / a.qty : 0;
+          const avgB = b.qty > 0 ? b.amt / b.qty : 0;
+          return dirMul * (avgA - avgB) || b.amt - a.amt;
+        }
+        case 'share':
+        case 'amt':
+        default:
+          return dirMul * (a.amt - b.amt) || b.qty - a.qty;
+      }
+    });
+  }, [filteredRows, storeItemSort]);
+
+  const sortedConsolidatedPromos = useMemo(() => {
+    const dirMul = consolidatedSort.dir === 'asc' ? 1 : -1;
+    return [...consolidatedPromos].sort((a, b) => {
+      switch (consolidatedSort.field) {
+        case 'itemNumber':
+          return (
+            dirMul *
+              a.itemNumber.localeCompare(b.itemNumber, undefined, { numeric: true }) ||
+            b.amt - a.amt
+          );
+        case 'itemName':
+          return dirMul * a.itemName.localeCompare(b.itemName) || b.amt - a.amt;
+        case 'storeCount':
+          return dirMul * (a.storeCount - b.storeCount) || b.amt - a.amt;
+        case 'checkCount':
+          return dirMul * (a.checkCount - b.checkCount) || b.amt - a.amt;
+        case 'qty':
+          return dirMul * (a.qty - b.qty) || b.amt - a.amt;
+        case 'avgPrice': {
+          const avgA = a.qty > 0 ? a.amt / a.qty : 0;
+          const avgB = b.qty > 0 ? b.amt / b.qty : 0;
+          return dirMul * (avgA - avgB) || b.amt - a.amt;
+        }
+        case 'share':
+        case 'amt':
+        default:
+          return dirMul * (a.amt - b.amt) || b.qty - a.qty;
+      }
+    });
+  }, [consolidatedPromos, consolidatedSort]);
 
   // Trend Series (Daily or Monthly)
   const trendSeries = useMemo(() => {
@@ -1041,22 +1326,9 @@ export function PromotionsReport() {
       </div>
 
       {loadedFilters ? (
-        <div className="d-flex flex-column gap-3">
+        <div className="d-flex flex-column gap-3 promo-campaign-workspace">
           {/* 4 Executive KPI Cards */}
           <div className="row g-3">
-            <div className="col-6 col-xl-3">
-              <div className="menuitem-kpi-card h-100">
-                <div className="d-flex align-items-center justify-content-between">
-                  <span className="menuitem-kpi-label">Total Promo Qty Sold</span>
-                  <ShoppingBag size={16} className="menuitem-kpi-icon" />
-                </div>
-                <div className="menuitem-kpi-value">{formatQty(visibleTotals.qty)}</div>
-                <div className="menuitem-kpi-subtext">
-                  Across {visibleTotals.storeCount} store(s) • {visibleTotals.promoCount} promo(s)
-                </div>
-              </div>
-            </div>
-
             <div className="col-6 col-xl-3">
               <div className="menuitem-kpi-card h-100">
                 <div className="d-flex align-items-center justify-content-between">
@@ -1077,7 +1349,24 @@ export function PromotionsReport() {
             <div className="col-6 col-xl-3">
               <div className="menuitem-kpi-card h-100">
                 <div className="d-flex align-items-center justify-content-between">
-                  <span className="menuitem-kpi-label">Active Promotions</span>
+                  <span className="menuitem-kpi-label">Total Promo Qty &amp; Checks</span>
+                  <ShoppingBag size={16} className="menuitem-kpi-icon" />
+                </div>
+                <div className="menuitem-kpi-value">{formatQty(visibleTotals.qty)}</div>
+                <div className="menuitem-kpi-subtext">
+                  {visibleTotals.checkCount.toLocaleString('en-PH')} guest check(s) •{' '}
+                  {visibleTotals.checkCount > 0
+                    ? (visibleTotals.qty / visibleTotals.checkCount).toFixed(2)
+                    : '0.00'}{' '}
+                  qty/check
+                </div>
+              </div>
+            </div>
+
+            <div className="col-6 col-xl-3">
+              <div className="menuitem-kpi-card h-100">
+                <div className="d-flex align-items-center justify-content-between">
+                  <span className="menuitem-kpi-label">Active Promotion Plans</span>
                   <Tag size={16} className="menuitem-kpi-icon" />
                 </div>
                 <div className="menuitem-kpi-value">{visibleTotals.promoCount}</div>
@@ -1092,7 +1381,7 @@ export function PromotionsReport() {
                   }
                 >
                   {topPromoOverall
-                    ? `Top: ${topPromoOverall.itemName}`
+                    ? `Leader: ${topPromoOverall.itemName}`
                     : 'No promotions recorded'}
                 </div>
               </div>
@@ -1145,9 +1434,12 @@ export function PromotionsReport() {
                     Rows:{' '}
                     <strong>
                       {groupMode === 'consolidated'
-                        ? consolidatedPromos.length
-                        : filteredRows.length}
+                        ? sortedConsolidatedPromos.length
+                        : sortedFilteredRows.length}
                     </strong>
+                  </span>
+                  <span className="menuitem-meta-pill">
+                    Checks: <strong>{visibleTotals.checkCount.toLocaleString('en-PH')}</strong>
                   </span>
                 </div>
 
@@ -1247,15 +1539,15 @@ export function PromotionsReport() {
                       className="btn rof-export-btn rof-export-btn-excel btn-sm d-inline-flex align-items-center gap-2 px-3 fw-semibold"
                       onClick={() =>
                         exportPromotionsToExcel({
-                          rows: filteredRows,
-                          consolidatedPromos,
+                          rows: sortedFilteredRows,
+                          consolidatedPromos: sortedConsolidatedPromos,
                           storePerformance,
                           dailyTrend,
                           filters: loadedFilters,
                           activeDrilldown,
                         })
                       }
-                      disabled={filteredRows.length === 0}
+                      disabled={sortedFilteredRows.length === 0}
                       title="Download Multi-Sheet Promotion Monitoring Excel Workbook (.xlsx)"
                     >
                       <FileSpreadsheet size={15} />
@@ -1267,13 +1559,13 @@ export function PromotionsReport() {
                       className="btn rof-export-btn rof-export-btn-pdf btn-sm d-inline-flex align-items-center gap-2 px-3 fw-semibold"
                       onClick={() =>
                         exportPromotionsToPdf({
-                          rows: filteredRows,
-                          consolidatedPromos,
+                          rows: sortedFilteredRows,
+                          consolidatedPromos: sortedConsolidatedPromos,
                           filters: loadedFilters,
                           groupMode,
                         })
                       }
-                      disabled={filteredRows.length === 0}
+                      disabled={sortedFilteredRows.length === 0}
                       title="Download Printable Promotion Monitoring PDF"
                     >
                       <FileText size={15} />
@@ -1289,9 +1581,19 @@ export function PromotionsReport() {
                   <div className="d-flex align-items-center gap-2 text-secondary">
                     <Sparkles size={14} style={{ color: 'var(--brand-orange)' }} />
                     <span>
-                      Click <strong>Items Used</strong> on any row to inspect the actual items rung up on the same guest check/receipt for that promotion.
+                      Click any column header to sort. Use <strong>Pin</strong> to add up to 4 plans to the Comparison Matrix, or click <strong>Items Used</strong> to inspect receipt items.
                     </span>
                   </div>
+                  {pinnedPromoIds.length > 0 && (
+                    <button
+                      type="button"
+                      className="promo-pin-btn active py-0"
+                      onClick={() => setActiveTab('analytics')}
+                    >
+                      <GitCompare size={13} />
+                      <span>View Compare Matrix ({pinnedPromoIds.length} pinned)</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="table-responsive rof-grid-scroll-container menuitem-pivot-scroll-container">
@@ -1299,40 +1601,98 @@ export function PromotionsReport() {
                     <table className="table align-middle mb-0 bom-data-table menuitem-summary-table">
                       <thead>
                         <tr>
-                          <th style={{ width: '165px' }}>LOCATION NAME</th>
-                          <th style={{ width: '125px' }}>ITEM NUMBER</th>
-                          <th>PROMOTION ITEM NAME</th>
-                          <th className="text-end" style={{ width: '120px' }}>
-                            QTY SOLD
-                          </th>
-                          <th className="text-end" style={{ width: '160px' }}>
-                            TOTAL AMOUNT (AMT)
-                          </th>
-                          <th className="text-end" style={{ width: '105px' }}>
-                            % SHARE
-                          </th>
-                          <th className="text-center" style={{ width: '175px' }}>
+                          <SortableHeaderCell
+                            label="LOCATION NAME"
+                            field="locationName"
+                            activeField={storeItemSort.field}
+                            direction={storeItemSort.dir}
+                            onSort={handleStoreItemSort}
+                            style={{ width: '155px' }}
+                          />
+                          <SortableHeaderCell
+                            label="ITEM NUMBER"
+                            field="itemNumber"
+                            activeField={storeItemSort.field}
+                            direction={storeItemSort.dir}
+                            onSort={handleStoreItemSort}
+                            style={{ width: '120px' }}
+                          />
+                          <SortableHeaderCell
+                            label="PROMOTION ITEM NAME"
+                            field="itemName"
+                            activeField={storeItemSort.field}
+                            direction={storeItemSort.dir}
+                            onSort={handleStoreItemSort}
+                          />
+                          <SortableHeaderCell
+                            label="GUEST CHECKS"
+                            field="checkCount"
+                            activeField={storeItemSort.field}
+                            direction={storeItemSort.dir}
+                            onSort={handleStoreItemSort}
+                            align="end"
+                            style={{ width: '125px' }}
+                          />
+                          <SortableHeaderCell
+                            label="QTY SOLD"
+                            field="qty"
+                            activeField={storeItemSort.field}
+                            direction={storeItemSort.dir}
+                            onSort={handleStoreItemSort}
+                            align="end"
+                            style={{ width: '115px' }}
+                          />
+                          <SortableHeaderCell
+                            label="AVG UNIT VALUE"
+                            field="avgPrice"
+                            activeField={storeItemSort.field}
+                            direction={storeItemSort.dir}
+                            onSort={handleStoreItemSort}
+                            align="end"
+                            style={{ width: '135px' }}
+                          />
+                          <SortableHeaderCell
+                            label="TOTAL AMOUNT (AMT)"
+                            field="amt"
+                            activeField={storeItemSort.field}
+                            direction={storeItemSort.dir}
+                            onSort={handleStoreItemSort}
+                            align="end"
+                            style={{ width: '160px' }}
+                          />
+                          <SortableHeaderCell
+                            label="% SHARE"
+                            field="share"
+                            activeField={storeItemSort.field}
+                            direction={storeItemSort.dir}
+                            onSort={handleStoreItemSort}
+                            align="end"
+                            style={{ width: '125px' }}
+                          />
+                          <th className="text-center" style={{ width: '195px' }}>
                             PROMO DETAILS
                           </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredRows.length === 0 ? (
+                        {sortedFilteredRows.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="text-center py-5 menuitem-empty-state">
+                            <td colSpan={9} className="text-center py-5 menuitem-empty-state">
                               No Promotion records found for the selected store, promotion, and date range.
                             </td>
                           </tr>
                         ) : (
                           <>
-                            {filteredRows.map((row, idx) => {
+                            {sortedFilteredRows.map((row, idx) => {
                               const sharePct =
                                 visibleTotals.amt > 0
                                   ? (row.amt / visibleTotals.amt) * 100
                                   : 0;
+                              const avgUnitVal = row.qty > 0 ? row.amt / row.qty : 0;
                               const isSelectedDrill =
                                 activeDrilldown?.promo.itemNumber === row.itemNumber &&
                                 activeDrilldown?.promo.locationName === row.locationName;
+                              const isPinned = pinnedPromoIds.includes(row.itemNumber);
 
                               return (
                                 <tr
@@ -1350,10 +1710,28 @@ export function PromotionsReport() {
                                   </td>
                                   <td
                                     className={`num-cell ${
+                                      row.checkCount === 0
+                                        ? 'menuitem-cell-zero'
+                                        : 'menuitem-cell-active'
+                                    }`}
+                                  >
+                                    {row.checkCount.toLocaleString('en-PH')}
+                                  </td>
+                                  <td
+                                    className={`num-cell ${
                                       isZeroValue(row.qty) ? 'menuitem-cell-zero' : 'fw-semibold'
                                     }`}
                                   >
                                     {formatQty(row.qty)}
+                                  </td>
+                                  <td
+                                    className={`num-cell ${
+                                      isZeroValue(avgUnitVal)
+                                        ? 'menuitem-cell-zero'
+                                        : 'menuitem-secondary-cell fw-semibold'
+                                    }`}
+                                  >
+                                    ₱{formatMoney(avgUnitVal)}
                                   </td>
                                   <td
                                     className={`num-cell ${
@@ -1364,29 +1742,59 @@ export function PromotionsReport() {
                                   >
                                     ₱{formatMoney(row.amt)}
                                   </td>
-                                  <td className="num-cell menuitem-secondary-cell fw-semibold">
-                                    {sharePct.toFixed(2)}%
+                                  <td className="num-cell">
+                                    <div className="promo-inline-share-wrap">
+                                      <span className="menuitem-secondary-cell fw-semibold">
+                                        {sharePct.toFixed(2)}%
+                                      </span>
+                                      <div className="promo-inline-share-track" aria-hidden="true">
+                                        <div
+                                          className="promo-inline-share-fill"
+                                          style={{
+                                            width: `${Math.min(
+                                              100,
+                                              Math.max(sharePct, sharePct > 0 ? 3 : 0)
+                                            )}%`,
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
                                   </td>
                                   <td className="text-center">
-                                    <button
-                                      type="button"
-                                      className={`btn btn-sm d-inline-flex align-items-center gap-1 px-2 py-1 ${
-                                        isSelectedDrill
-                                          ? 'btn-primary'
-                                          : 'btn-outline-secondary'
-                                      }`}
-                                      onClick={() =>
-                                        handleInspectPromoDetails({
-                                          itemNumber: row.itemNumber,
-                                          itemName: row.itemName,
-                                          locationName: row.locationName,
-                                        })
-                                      }
-                                      disabled={drilldownLoading}
-                                    >
-                                      <Eye size={13} />
-                                      <span>Items Used</span>
-                                    </button>
+                                    <div className="d-inline-flex align-items-center gap-1">
+                                      <button
+                                        type="button"
+                                        className={`promo-pin-btn ${isPinned ? 'active' : ''}`}
+                                        onClick={() => togglePinPromo(row.itemNumber)}
+                                        title={
+                                          isPinned
+                                            ? 'Unpin from Compare Matrix'
+                                            : 'Pin promotion to Compare Matrix'
+                                        }
+                                      >
+                                        {isPinned ? <PinOff size={12} /> : <Pin size={12} />}
+                                        <span>{isPinned ? 'Pinned' : 'Pin'}</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={`btn btn-sm d-inline-flex align-items-center gap-1 px-2 py-1 ${
+                                          isSelectedDrill
+                                            ? 'btn-primary'
+                                            : 'btn-outline-secondary'
+                                        }`}
+                                        onClick={() =>
+                                          handleInspectPromoDetails({
+                                            itemNumber: row.itemNumber,
+                                            itemName: row.itemName,
+                                            locationName: row.locationName,
+                                          })
+                                        }
+                                        disabled={drilldownLoading}
+                                      >
+                                        <Eye size={13} />
+                                        <span>Items Used</span>
+                                      </button>
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -1396,16 +1804,37 @@ export function PromotionsReport() {
                             <tr className="rof-total-row fw-bold">
                               <td className="bom-charcoal-text">TOTAL</td>
                               <td className="menuitem-footer-count">
-                                {filteredRows.length} Row(s)
+                                {sortedFilteredRows.length} Row(s)
                               </td>
                               <td>{visibleTotals.promoCount} Unique Promotion(s)</td>
+                              <td className="num-cell bom-charcoal-text">
+                                {visibleTotals.checkCount.toLocaleString('en-PH')}
+                              </td>
                               <td className="num-cell bom-charcoal-text">
                                 {formatQty(visibleTotals.qty)}
                               </td>
                               <td className="num-cell bom-charcoal-text">
+                                ₱
+                                {formatMoney(
+                                  visibleTotals.qty > 0
+                                    ? visibleTotals.amt / visibleTotals.qty
+                                    : 0
+                                )}
+                              </td>
+                              <td className="num-cell bom-charcoal-text">
                                 ₱{formatMoney(visibleTotals.amt)}
                               </td>
-                              <td className="num-cell bom-charcoal-text">100.00%</td>
+                              <td className="num-cell bom-charcoal-text">
+                                <div className="promo-inline-share-wrap">
+                                  <span>100.00%</span>
+                                  <div className="promo-inline-share-track" aria-hidden="true">
+                                    <div
+                                      className="promo-inline-share-fill"
+                                      style={{ width: '100%' }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
                               <td></td>
                             </tr>
                           </>
@@ -1417,41 +1846,98 @@ export function PromotionsReport() {
                     <table className="table align-middle mb-0 bom-data-table menuitem-summary-table">
                       <thead>
                         <tr>
-                          <th style={{ width: '130px' }}>ITEM NUMBER</th>
-                          <th>PROMOTION ITEM NAME</th>
-                          <th className="text-center" style={{ width: '140px' }}>
-                            STORES SOLD
-                          </th>
-                          <th className="text-end" style={{ width: '130px' }}>
-                            TOTAL QTY
-                          </th>
-                          <th className="text-end" style={{ width: '165px' }}>
-                            TOTAL AMOUNT (AMT)
-                          </th>
-                          <th className="text-end" style={{ width: '105px' }}>
-                            % SHARE
-                          </th>
-                          <th className="text-center" style={{ width: '185px' }}>
+                          <SortableHeaderCell
+                            label="ITEM NUMBER"
+                            field="itemNumber"
+                            activeField={consolidatedSort.field}
+                            direction={consolidatedSort.dir}
+                            onSort={handleConsolidatedSort}
+                            style={{ width: '125px' }}
+                          />
+                          <SortableHeaderCell
+                            label="PROMOTION ITEM NAME"
+                            field="itemName"
+                            activeField={consolidatedSort.field}
+                            direction={consolidatedSort.dir}
+                            onSort={handleConsolidatedSort}
+                          />
+                          <SortableHeaderCell
+                            label="STORES SOLD"
+                            field="storeCount"
+                            activeField={consolidatedSort.field}
+                            direction={consolidatedSort.dir}
+                            onSort={handleConsolidatedSort}
+                            align="center"
+                            style={{ width: '130px' }}
+                          />
+                          <SortableHeaderCell
+                            label="GUEST CHECKS"
+                            field="checkCount"
+                            activeField={consolidatedSort.field}
+                            direction={consolidatedSort.dir}
+                            onSort={handleConsolidatedSort}
+                            align="end"
+                            style={{ width: '130px' }}
+                          />
+                          <SortableHeaderCell
+                            label="TOTAL QTY"
+                            field="qty"
+                            activeField={consolidatedSort.field}
+                            direction={consolidatedSort.dir}
+                            onSort={handleConsolidatedSort}
+                            align="end"
+                            style={{ width: '120px' }}
+                          />
+                          <SortableHeaderCell
+                            label="AVG UNIT VALUE"
+                            field="avgPrice"
+                            activeField={consolidatedSort.field}
+                            direction={consolidatedSort.dir}
+                            onSort={handleConsolidatedSort}
+                            align="end"
+                            style={{ width: '135px' }}
+                          />
+                          <SortableHeaderCell
+                            label="TOTAL AMOUNT (AMT)"
+                            field="amt"
+                            activeField={consolidatedSort.field}
+                            direction={consolidatedSort.dir}
+                            onSort={handleConsolidatedSort}
+                            align="end"
+                            style={{ width: '165px' }}
+                          />
+                          <SortableHeaderCell
+                            label="% SHARE"
+                            field="share"
+                            activeField={consolidatedSort.field}
+                            direction={consolidatedSort.dir}
+                            onSort={handleConsolidatedSort}
+                            align="end"
+                            style={{ width: '125px' }}
+                          />
+                          <th className="text-center" style={{ width: '205px' }}>
                             PROMO DETAILS
                           </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {consolidatedPromos.length === 0 ? (
+                        {sortedConsolidatedPromos.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="text-center py-5 menuitem-empty-state">
+                            <td colSpan={9} className="text-center py-5 menuitem-empty-state">
                               No Promotion records found for the selected filters.
                             </td>
                           </tr>
                         ) : (
                           <>
-                            {consolidatedPromos.map((promo) => {
+                            {sortedConsolidatedPromos.map((promo) => {
                               const sharePct =
                                 visibleTotals.amt > 0
                                   ? (promo.amt / visibleTotals.amt) * 100
                                   : 0;
+                              const avgUnitVal = promo.qty > 0 ? promo.amt / promo.qty : 0;
                               const isSelectedDrill =
                                 activeDrilldown?.promo.itemNumber === promo.itemNumber;
+                              const isPinned = pinnedPromoIds.includes(promo.itemNumber);
 
                               return (
                                 <tr
@@ -1471,34 +1957,76 @@ export function PromotionsReport() {
                                       {promo.storeCount} store(s)
                                     </span>
                                   </td>
+                                  <td
+                                    className={`num-cell ${
+                                      promo.checkCount === 0
+                                        ? 'menuitem-cell-zero'
+                                        : 'menuitem-cell-active'
+                                    }`}
+                                  >
+                                    {promo.checkCount.toLocaleString('en-PH')}
+                                  </td>
                                   <td className="num-cell fw-semibold">
                                     {formatQty(promo.qty)}
+                                  </td>
+                                  <td className="num-cell menuitem-secondary-cell fw-semibold">
+                                    ₱{formatMoney(avgUnitVal)}
                                   </td>
                                   <td className="num-cell fw-bold bom-charcoal-text">
                                     ₱{formatMoney(promo.amt)}
                                   </td>
-                                  <td className="num-cell menuitem-secondary-cell fw-semibold">
-                                    {sharePct.toFixed(2)}%
+                                  <td className="num-cell">
+                                    <div className="promo-inline-share-wrap">
+                                      <span className="menuitem-secondary-cell fw-semibold">
+                                        {sharePct.toFixed(2)}%
+                                      </span>
+                                      <div className="promo-inline-share-track" aria-hidden="true">
+                                        <div
+                                          className="promo-inline-share-fill"
+                                          style={{
+                                            width: `${Math.min(
+                                              100,
+                                              Math.max(sharePct, sharePct > 0 ? 3 : 0)
+                                            )}%`,
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
                                   </td>
                                   <td className="text-center">
-                                    <button
-                                      type="button"
-                                      className={`btn btn-sm d-inline-flex align-items-center gap-1 px-2 py-1 ${
-                                        isSelectedDrill
-                                          ? 'btn-primary'
-                                          : 'btn-outline-secondary'
-                                      }`}
-                                      onClick={() =>
-                                        handleInspectPromoDetails({
-                                          itemNumber: promo.itemNumber,
-                                          itemName: promo.itemName,
-                                        })
-                                      }
-                                      disabled={drilldownLoading}
-                                    >
-                                      <Eye size={13} />
-                                      <span>All Stores Items</span>
-                                    </button>
+                                    <div className="d-inline-flex align-items-center gap-1">
+                                      <button
+                                        type="button"
+                                        className={`promo-pin-btn ${isPinned ? 'active' : ''}`}
+                                        onClick={() => togglePinPromo(promo.itemNumber)}
+                                        title={
+                                          isPinned
+                                            ? 'Unpin from Compare Matrix'
+                                            : 'Pin promotion to Compare Matrix'
+                                        }
+                                      >
+                                        {isPinned ? <PinOff size={12} /> : <Pin size={12} />}
+                                        <span>{isPinned ? 'Pinned' : 'Pin'}</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={`btn btn-sm d-inline-flex align-items-center gap-1 px-2 py-1 ${
+                                          isSelectedDrill
+                                            ? 'btn-primary'
+                                            : 'btn-outline-secondary'
+                                        }`}
+                                        onClick={() =>
+                                          handleInspectPromoDetails({
+                                            itemNumber: promo.itemNumber,
+                                            itemName: promo.itemName,
+                                          })
+                                        }
+                                        disabled={drilldownLoading}
+                                      >
+                                        <Eye size={13} />
+                                        <span>All Stores Items</span>
+                                      </button>
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -1507,18 +2035,39 @@ export function PromotionsReport() {
                             <tr className="rof-total-row fw-bold">
                               <td className="bom-charcoal-text">TOTAL</td>
                               <td className="menuitem-footer-count">
-                                {consolidatedPromos.length} Unique Promo(s)
+                                {sortedConsolidatedPromos.length} Unique Promo(s)
                               </td>
                               <td className="text-center">
                                 {visibleTotals.storeCount} store(s)
                               </td>
                               <td className="num-cell bom-charcoal-text">
+                                {visibleTotals.checkCount.toLocaleString('en-PH')}
+                              </td>
+                              <td className="num-cell bom-charcoal-text">
                                 {formatQty(visibleTotals.qty)}
+                              </td>
+                              <td className="num-cell bom-charcoal-text">
+                                ₱
+                                {formatMoney(
+                                  visibleTotals.qty > 0
+                                    ? visibleTotals.amt / visibleTotals.qty
+                                    : 0
+                                )}
                               </td>
                               <td className="num-cell bom-charcoal-text">
                                 ₱{formatMoney(visibleTotals.amt)}
                               </td>
-                              <td className="num-cell bom-charcoal-text">100.00%</td>
+                              <td className="num-cell bom-charcoal-text">
+                                <div className="promo-inline-share-wrap">
+                                  <span>100.00%</span>
+                                  <div className="promo-inline-share-track" aria-hidden="true">
+                                    <div
+                                      className="promo-inline-share-fill"
+                                      style={{ width: '100%' }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
                               <td></td>
                             </tr>
                           </>
@@ -1528,821 +2077,1025 @@ export function PromotionsReport() {
                   )}
                 </div>
               </div>
-
-              {/* =========================================================
-                  PROMOTION DETAILS / CHECK & BUNDLED ITEMS DRILL-DOWN PANEL
-                  ========================================================= */}
-              {(drilldownLoading || drilldownError || activeDrilldown) && (
-                <div ref={drilldownPanelRef} className="menuitem-flat-panel p-3 p-md-4 border-primary">
-                  <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 pb-3 mb-3 border-bottom">
-                    <div className="d-flex align-items-center gap-3 min-w-0">
-                      <div className="bom-header-icon-badge d-flex align-items-center justify-content-center rounded-3 flex-shrink-0">
-                        <PackageCheck size={19} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="d-flex align-items-center gap-2 flex-wrap">
-                          <h3 className="h6 fw-bold mb-0 bom-main-heading">
-                            Promotion Details &amp; Items Used in Receipts
-                          </h3>
-                          {activeDrilldown && (
-                            <span className="menuitem-code-badge">
-                              #{activeDrilldown.promo.itemNumber}
-                            </span>
-                          )}
-                          {activeDrilldown && (
-                            <span className="menuitem-meta-pill">
-                              Store:{' '}
-                              <strong>
-                                {activeDrilldown.promo.locationName === 'ALL'
-                                  ? 'All Stores'
-                                  : activeDrilldown.promo.locationName}
-                              </strong>
-                            </span>
-                          )}
-                        </div>
-                        {activeDrilldown && (
-                          <p className="menuitem-chart-subtext mb-0 mt-1">
-                            <strong>{activeDrilldown.promo.itemName}</strong> — Promo Qty:{' '}
-                            <strong>{formatQty(activeDrilldown.promo.totalPromoQty)}</strong> •
-                            Promo Amount:{' '}
-                            <strong>₱{formatMoney(activeDrilldown.promo.totalPromoAmt)}</strong>
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="d-flex flex-wrap align-items-center gap-2">
-                      {activeDrilldown && (
-                        <>
-                          <span className="menuitem-meta-pill">
-                            Items Used in Promo ({filteredPairedItems.length})
-                          </span>
-
-                          {/* Item Role Filter */}
-                          <select
-                            className="form-select form-select-sm menuitem-toolbar-select"
-                            value={drilldownRoleFilter}
-                            onChange={(e) =>
-                              setDrilldownRoleFilter(
-                                e.target.value as 'all' | 'target' | 'zero-price' | 'co-sold'
-                              )
-                            }
-                            aria-label="Filter by Item Role"
-                          >
-                            <option value="all">All Item Roles</option>
-                            <option value="target">Target Promotion</option>
-                            <option value="zero-price">Bundled / Zero-Price Item</option>
-                            <option value="co-sold">Co-Sold on Receipt</option>
-                          </select>
-
-                          {/* Filter Items by Entire Major Group Only */}
-                          <select
-                            className="form-select form-select-sm menuitem-toolbar-select"
-                            value={drilldownMajorGroup}
-                            onChange={(e) => setDrilldownMajorGroup(e.target.value)}
-                            aria-label="Filter items by Major Group"
-                          >
-                            <option value="">
-                              All Major Groups ({activeDrilldown.pairedItems.length})
-                            </option>
-                            {availableDrilldownMajorGroups.map((mg) => (
-                              <option key={mg.majorGroup} value={mg.majorGroup}>
-                                {mg.majorGroup} ({mg.count})
-                              </option>
-                            ))}
-                          </select>
-                        </>
-                      )}
-
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-                        onClick={() => {
-                          setActiveDrilldown(null);
-                          setDrilldownError(null);
-                        }}
-                      >
-                        <X size={14} />
-                        <span>Close</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {drilldownLoading && (
-                    <div className="text-center py-4 text-secondary">
-                      <span
-                        className="spinner-border spinner-border-sm text-primary me-2"
-                        role="status"
-                      />
-                      Inspecting items used for this promotion...
-                    </div>
-                  )}
-
-                  {drilldownError && (
-                    <div className="alert alert-danger py-2 small mb-0">
-                      {drilldownError}
-                    </div>
-                  )}
-
-                  {!drilldownLoading && activeDrilldown && (
-                    <div className="table-responsive rof-grid-scroll-container">
-                      <table className="table align-middle mb-0 bom-data-table menuitem-summary-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: '120px' }}>ITEM NUMBER</th>
-                            <th>ITEM NAME (USED IN PROMO)</th>
-                            <th style={{ width: '160px' }}>MAJOR GROUP</th>
-                            <th style={{ width: '160px' }}>FAMILY GROUP</th>
-                            <th style={{ width: '195px' }}>ITEM ROLE</th>
-                            <th className="text-end" style={{ width: '130px' }}>
-                              TOTAL QTY
-                            </th>
-                            <th className="text-end" style={{ width: '155px' }}>
-                              LINE AMOUNT
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredPairedItems.length === 0 ? (
-                            <tr>
-                              <td colSpan={7} className="text-center py-4 text-secondary">
-                                No items matched the selected Item Role / Major Group filter.
-                              </td>
-                            </tr>
-                          ) : (
-                            filteredPairedItems.map((item) => (
-                              <tr
-                                key={`${item.itemNumber}-${item.majorGroup}-${item.familyGroup}`}
-                                className={item.isSelectedPromo ? 'table-warning' : ''}
-                              >
-                                <td className="menuitem-code-cell text-nowrap">
-                                  <span className="menuitem-code-badge">
-                                    {item.itemNumber}
-                                  </span>
-                                </td>
-                                <td className="menuitem-name-cell fw-semibold">
-                                  {item.itemName}
-                                </td>
-                                <td>
-                                  <span className="rof-mod-badge">{item.majorGroup}</span>
-                                </td>
-                                <td className="menuitem-secondary-cell">
-                                  {item.familyGroup}
-                                </td>
-                                <td>
-                                  {item.isSelectedPromo ? (
-                                    <span className="badge bg-primary-subtle text-primary border border-primary-subtle">
-                                      Target Promotion
-                                    </span>
-                                  ) : item.isZeroPriceBundleItem ? (
-                                    <span className="badge bg-success-subtle text-success border border-success-subtle">
-                                      Bundled / Zero-Price Item
-                                    </span>
-                                  ) : (
-                                    <span className="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-                                      Co-Sold on Receipt
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="num-cell fw-semibold">
-                                  {formatQty(item.totalQty)}
-                                </td>
-                                <td className="num-cell fw-bold bom-charcoal-text">
-                                  ₱{formatMoney(item.totalAmt)}
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
             </>
           )}
 
           {/* ===============================================================
-              TAB 2: PROMOTION PERFORMANCE ANALYTICS (CHARTS & BREAKDOWNS)
+              TAB 2: PROMOTION PERFORMANCE ANALYTICS (3-TIER CAMPAIGN HIERARCHY)
               =============================================================== */}
           {activeTab === 'analytics' && (
-            <>
-              {/* 1. PER-STORE GRAPH (Displayed prominently when ALL STORES is selected or multiple stores exist) */}
-              {(isAllStoresLoaded || storeChartSeries.length > 1) && (
-                <div className="menuitem-flat-panel p-3 p-md-4">
-                  <div className="d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3 pb-3 mb-3 border-bottom">
-                    <div>
+            <div className="promo-tier-stack">
+              {/* ===========================================================
+                  TIER 1 (PRIMARY ANCHOR ABOVE THE FOLD):
+                  PROMOTION PLAN LEADERBOARD & PIN-TO-COMPARE MATRIX (2–4 PLANS)
+                  =========================================================== */}
+              <div className="promo-tier-section">
+                <div className="promo-tier1-grid">
+                  {/* Left Sub-Panel: Promotion Plan Leaderboard */}
+                  <div className="menuitem-flat-panel p-3 p-md-4">
+                    <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 pb-3 mb-3 border-bottom">
+                      <div className="d-flex align-items-center gap-2">
+                        <Award size={18} className="bom-charcoal-text flex-shrink-0" />
+                        <div>
+                          <div className="d-flex align-items-center gap-2 flex-wrap">
+                            <h3 className="h6 fw-bold mb-0 bom-main-heading">
+                              Promotion Plan Leaderboard
+                            </h3>
+                            <span className="menuitem-meta-pill py-0 px-2">
+                              {consolidatedPromos.length} Plan(s)
+                            </span>
+                          </div>
+                          <p className="menuitem-chart-subtext mb-0 mt-1">
+                            Pin 2–4 plans to compare side-by-side or inspect bundled receipt items in place.
+                          </p>
+                        </div>
+                      </div>
+
                       <div className="d-flex align-items-center gap-2 flex-wrap">
-                        <StoreIcon size={18} className="bom-charcoal-text" />
-                        <h3 className="h6 fw-bold mb-0 bom-main-heading">
-                          Promotion Performance Graph per Store
-                        </h3>
-                        <span className="menuitem-meta-pill">
-                          {storeChartSeries.length} Active Store(s)
-                        </span>
-                        {loadedFilters.promoName && (
-                          <span className="menuitem-meta-pill">
-                            Promo: <strong>{loadedFilters.promoName}</strong>
-                          </span>
-                        )}
-                        {selectedStoreFilter && (
+                        <div className="btn-group btn-group-sm" role="group" aria-label="Leaderboard Metric">
                           <button
                             type="button"
-                            className="btn btn-sm btn-outline-secondary py-0 px-2"
-                            onClick={() => setSelectedStoreFilter('')}
+                            className={`btn ${
+                              topPromoMetric === 'amt'
+                                ? 'menuitem-seg-btn-active'
+                                : 'menuitem-seg-btn'
+                            }`}
+                            onClick={() => setTopPromoMetric('amt')}
                           >
-                            Clear Store Filter ({selectedStoreFilter})
+                            By Amount (₱)
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn ${
+                              topPromoMetric === 'qty'
+                                ? 'menuitem-seg-btn-active'
+                                : 'menuitem-seg-btn'
+                            }`}
+                            onClick={() => setTopPromoMetric('qty')}
+                          >
+                            By Qty
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {leaderboardPromos.length === 0 ? (
+                      <div className="text-center py-4 menuitem-empty-state">
+                        No promotion plans available for the selected filters.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="promo-leaderboard-list">
+                          {leaderboardPromos.map((promo, idx) => {
+                            const maxVal =
+                              topPromoMetric === 'amt'
+                                ? leaderboardPromos[0]?.amt || 1
+                                : leaderboardPromos[0]?.qty || 1;
+                            const currVal = topPromoMetric === 'amt' ? promo.amt : promo.qty;
+                            const barPct = Math.max((currVal / maxVal) * 100, 3);
+                            const sharePct =
+                              topPromoMetric === 'amt'
+                                ? visibleTotals.amt > 0
+                                  ? (promo.amt / visibleTotals.amt) * 100
+                                  : 0
+                                : visibleTotals.qty > 0
+                                ? (promo.qty / visibleTotals.qty) * 100
+                                : 0;
+                            const avgPromoPrice = promo.qty > 0 ? promo.amt / promo.qty : 0;
+                            const isPinned = pinnedPromoIds.includes(promo.itemNumber);
+                            const isInspecting =
+                              activeDrilldown?.promo.itemNumber === promo.itemNumber;
+                            const isThisLoading = Boolean(loadingPromoMap[promo.itemNumber]);
+
+                            return (
+                              <div
+                                key={promo.itemNumber}
+                                className={`promo-leaderboard-row ${
+                                  isPinned ? 'is-pinned' : ''
+                                } ${isInspecting ? 'is-inspecting' : ''}`}
+                              >
+                                <div className="d-flex align-items-start justify-content-between gap-2">
+                                  <div className="d-flex align-items-center gap-2 min-w-0 flex-wrap">
+                                    <span className="menuitem-rank-badge">#{idx + 1}</span>
+                                    <span className="menuitem-code-badge">
+                                      {promo.itemNumber}
+                                    </span>
+                                    <span
+                                      className="fw-bold bom-charcoal-text text-truncate"
+                                      title={promo.itemName}
+                                    >
+                                      {promo.itemName}
+                                    </span>
+                                  </div>
+
+                                  <div className="text-end flex-shrink-0">
+                                    <div className="fw-bold bom-charcoal-text text-nowrap">
+                                      {topPromoMetric === 'amt'
+                                        ? `₱${formatMoney(promo.amt)}`
+                                        : `${formatQty(promo.qty)} units`}{' '}
+                                      <span className="menuitem-chart-subtext fw-semibold">
+                                        ({sharePct.toFixed(1)}%)
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="menuitem-progress-track">
+                                  <div
+                                    className="menuitem-progress-fill"
+                                    style={{ width: `${barPct}%` }}
+                                  />
+                                </div>
+
+                                <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                  <div className="promo-leaderboard-metrics">
+                                    <span>
+                                      Qty: <strong>{formatQty(promo.qty)}</strong>
+                                    </span>
+                                    <span>
+                                      Checks:{' '}
+                                      <strong>
+                                        {promo.checkCount.toLocaleString('en-PH')}
+                                      </strong>
+                                    </span>
+                                    <span>
+                                      Avg: <strong>₱{formatMoney(avgPromoPrice)}</strong>
+                                    </span>
+                                    <span>
+                                      Reach: <strong>{promo.storeCount} store(s)</strong>
+                                    </span>
+                                    {promo.topStoreName && promo.topStoreName !== '—' && (
+                                      <span className="text-truncate" title={promo.topStoreName}>
+                                        Top: <strong>{promo.topStoreName}</strong>
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="d-inline-flex align-items-center gap-1 flex-shrink-0">
+                                    <button
+                                      type="button"
+                                      className={`promo-pin-btn ${isPinned ? 'active' : ''}`}
+                                      onClick={() => togglePinPromo(promo.itemNumber)}
+                                      title={
+                                        isPinned
+                                          ? 'Remove from Pin-to-Compare Matrix'
+                                          : 'Pin to Compare Matrix (up to 4 plans)'
+                                      }
+                                    >
+                                      {isPinned ? <PinOff size={13} /> : <Pin size={13} />}
+                                      <span>{isPinned ? 'Pinned' : 'Pin'}</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      className={`promo-inspect-btn ${
+                                        isInspecting ? 'active' : ''
+                                      }`}
+                                      onClick={() => {
+                                        if (isInspecting) {
+                                          setActiveDrilldown(null);
+                                        } else {
+                                          void handleInspectPromoDetails({
+                                            itemNumber: promo.itemNumber,
+                                            itemName: promo.itemName,
+                                            preserveScroll: true,
+                                          });
+                                        }
+                                      }}
+                                      disabled={isThisLoading}
+                                      title="Inspect bundled zero-price & co-sold receipt items without leaving this view"
+                                    >
+                                      <Receipt size={13} />
+                                      <span>
+                                        {isThisLoading
+                                          ? 'Loading...'
+                                          : isInspecting
+                                          ? 'Hide Items'
+                                          : 'Receipt Items'}
+                                      </span>
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {consolidatedPromos.length > 10 && (
+                          <div className="mt-2 pt-2 border-top d-flex justify-content-between align-items-center small">
+                            <span className="menuitem-chart-subtext">
+                              Showing {leaderboardPromos.length} of {consolidatedPromos.length}{' '}
+                              promotional plans
+                            </span>
+                            <button
+                              type="button"
+                              className="promo-pin-btn"
+                              onClick={() => setShowAllLeaderboardPromos((v) => !v)}
+                            >
+                              {showAllLeaderboardPromos
+                                ? 'Show Top 10 Only'
+                                : `Show All (${consolidatedPromos.length})`}
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Right Sub-Panel: Pin-to-Compare Matrix (2–4 Plans) */}
+                  <div className="menuitem-flat-panel p-3 p-md-4">
+                    <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 pb-3 mb-3 border-bottom">
+                      <div className="d-flex align-items-center gap-2">
+                        <GitCompare size={18} className="bom-charcoal-text flex-shrink-0" />
+                        <div>
+                          <div className="d-flex align-items-center gap-2 flex-wrap">
+                            <h3 className="h6 fw-bold mb-0 bom-main-heading">
+                              Pin-to-Compare Campaign Matrix
+                            </h3>
+                            <span className="menuitem-meta-pill py-0 px-2">
+                              {pinnedPlans.length} / 4 Pinned
+                            </span>
+                          </div>
+                          <p className="menuitem-chart-subtext mb-0 mt-1">
+                            Side-by-side comparison of 2–4 promotional plans across revenue, volume, guest checks, store reach, and bundled receipt items.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="d-flex flex-wrap align-items-center gap-2">
+                        {pinnedPlans.length > 0 && (
+                          <button
+                            type="button"
+                            className="promo-pin-btn"
+                            onClick={handleLoadPinnedReceiptItems}
+                            title="Load bundled zero-price receipt items for all pinned plans"
+                          >
+                            <PackageCheck size={13} />
+                            <span>Load Bundled Items</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="promo-pin-btn"
+                          onClick={() => handlePinTopPlans(3)}
+                          disabled={consolidatedPromos.length === 0}
+                        >
+                          <Pin size={13} />
+                          <span>Pin Top 3</span>
+                        </button>
+                        {pinnedPlans.length > 0 && (
+                          <button
+                            type="button"
+                            className="promo-pin-btn"
+                            onClick={handleClearPins}
+                          >
+                            <X size={13} />
+                            <span>Clear</span>
                           </button>
                         )}
                       </div>
-                      <p className="menuitem-chart-subtext mb-0 mt-1">
-                        Top Performing Store:{' '}
-                        <strong>{storeChartStats.topStoreLabel}</strong> (
-                        {storeRankMetric === 'amt'
-                          ? `₱${formatMoney(storeChartStats.topStoreVal)}`
-                          : `${formatQty(storeChartStats.topStoreVal)} units`}
-                        ) • Avg per Store:{' '}
-                        <strong>
-                          {storeRankMetric === 'amt'
-                            ? `₱${formatMoney(storeChartStats.avgVal)}`
-                            : `${formatQty(storeChartStats.avgVal)} units`}
-                        </strong>{' '}
-                        • Click any bar to filter by that store.
-                      </p>
                     </div>
 
-                    {/* Store Chart Sort & Metric Controls */}
-                    <div className="d-flex flex-wrap align-items-center gap-2">
-                      <div className="btn-group btn-group-sm" role="group" aria-label="Store Sort Order">
-                        <button
-                          type="button"
-                          className={`btn ${
-                            storeChartSortOrder === 'desc'
-                              ? 'menuitem-seg-btn-active'
-                              : 'menuitem-seg-btn'
-                          }`}
-                          onClick={() => setStoreChartSortOrder('desc')}
-                        >
-                          Highest First
-                        </button>
-                        <button
-                          type="button"
-                          className={`btn ${
-                            storeChartSortOrder === 'asc'
-                              ? 'menuitem-seg-btn-active'
-                              : 'menuitem-seg-btn'
-                          }`}
-                          onClick={() => setStoreChartSortOrder('asc')}
-                        >
-                          Lowest First
-                        </button>
-                        <button
-                          type="button"
-                          className={`btn ${
-                            storeChartSortOrder === 'alpha'
-                              ? 'menuitem-seg-btn-active'
-                              : 'menuitem-seg-btn'
-                          }`}
-                          onClick={() => setStoreChartSortOrder('alpha')}
-                        >
-                          Store Name (A–Z)
-                        </button>
-                      </div>
-
-                      <div className="btn-group btn-group-sm" role="group" aria-label="Store Metric">
-                        <button
-                          type="button"
-                          className={`btn ${
-                            storeRankMetric === 'amt'
-                              ? 'menuitem-seg-btn-active'
-                              : 'menuitem-seg-btn'
-                          }`}
-                          onClick={() => setStoreRankMetric('amt')}
-                        >
-                          Amount (₱)
-                        </button>
-                        <button
-                          type="button"
-                          className={`btn ${
-                            storeRankMetric === 'qty'
-                              ? 'menuitem-seg-btn-active'
-                              : 'menuitem-seg-btn'
-                          }`}
-                          onClick={() => setStoreRankMetric('qty')}
-                        >
-                          Qty Sold
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {storeChartSeries.length === 0 ? (
-                    <div className="text-center py-4 menuitem-empty-state">
-                      No per-store promotion data available for the selected filters.
-                    </div>
-                  ) : (
-                    <div className="menuitem-chart-stage">
-                      <div className="menuitem-chart-layout">
-                        {/* Left Y-Axis Labels */}
-                        <div className="menuitem-yaxis-col" aria-hidden="true">
-                          {storeChartStats.ticks.map((tickVal, idx) => (
-                            <div key={idx} className="menuitem-yaxis-label">
-                              {formatAxisTick(tickVal, storeRankMetric)}
-                            </div>
-                          ))}
+                    {pinnedPlans.length === 0 ? (
+                      <div className="text-center py-5 menuitem-empty-state">
+                        <GitCompare size={28} className="mb-2 text-secondary" />
+                        <div className="fw-semibold bom-charcoal-text mb-1">
+                          No Promotional Plans Pinned
                         </div>
-
-                        {/* Horizontally Scrollable Per-Store Bar Plot */}
-                        <div className="menuitem-trend-bars-scroll">
-                          <div
-                            className="menuitem-plot-canvas"
-                            style={{
-                              minWidth: Math.max(storeChartSeries.length * 64, 480),
-                            }}
+                        <p className="menuitem-chart-subtext mb-3">
+                          Pin 2 to 4 plans from the Leaderboard on the left to compare Total Promo Amount, Qty Sold, Guest Checks, Avg Promo Price, Store Reach, Top Store, and Bundled Zero-Price Items side by side.
+                        </p>
+                        {consolidatedPromos.length > 0 && (
+                          <button
+                            type="button"
+                            className="promo-pin-btn active"
+                            onClick={() => handlePinTopPlans(3)}
                           >
-                            <div className="menuitem-gridlines-layer" aria-hidden="true">
-                              {storeChartStats.ticks.map((_, idx) => (
-                                <div
-                                  key={idx}
-                                  className={`menuitem-gridline-row ${
-                                    idx === storeChartStats.ticks.length - 1 ? 'baseline' : ''
-                                  }`}
-                                />
-                              ))}
-                            </div>
-
-                            <div className="menuitem-trend-bars-grid">
-                              {storeChartSeries.map((st, idx) => {
-                                const val = storeRankMetric === 'amt' ? st.amt : st.qty;
-                                const heightPct =
-                                  storeChartStats.axisMax > 0
-                                    ? Math.min(
-                                        100,
-                                        Math.max(
-                                          (val / storeChartStats.axisMax) * 100,
-                                          val > 0 ? 3 : 0
-                                        )
-                                      )
-                                    : 0;
-                                const isHovered = hoveredStoreIndex === idx;
-                                const isTop =
-                                  st.locationName === storeChartStats.topStoreKey &&
-                                  storeChartStats.topStoreVal > 0;
-                                const isSelectedStore =
-                                  selectedStoreFilter === st.locationName;
-                                const tooltipAlignClass =
-                                  idx <= 1
-                                    ? 'align-left'
-                                    : idx >= storeChartSeries.length - 2
-                                    ? 'align-right'
-                                    : 'align-center';
-
-                                return (
-                                  <div
-                                    key={st.locationName}
-                                    className={`menuitem-trend-bar-col ${
-                                      isHovered ? 'hovered' : ''
-                                    } ${isTop || isSelectedStore ? 'is-peak' : ''}`}
-                                    style={{ cursor: 'pointer' }}
-                                    onMouseEnter={() => setHoveredStoreIndex(idx)}
-                                    onMouseLeave={() => setHoveredStoreIndex(null)}
-                                    onFocus={() => setHoveredStoreIndex(idx)}
-                                    onBlur={() => setHoveredStoreIndex(null)}
-                                    onClick={() =>
-                                      setSelectedStoreFilter((curr) =>
-                                        curr === st.locationName ? '' : st.locationName
-                                      )
-                                    }
-                                    tabIndex={0}
-                                    aria-label={`${st.locationName}: Amount ₱${formatMoney(
-                                      st.amt
-                                    )}, Qty ${formatQty(st.qty)}`}
-                                  >
-                                    {isHovered && (
-                                      <div
-                                        className={`menuitem-bar-floating-tooltip ${tooltipAlignClass}`}
-                                        role="tooltip"
-                                      >
-                                        <div className="menuitem-tooltip-header">
-                                          <span>{st.locationName}</span>
-                                          {isTop && (
-                                            <span className="menuitem-tooltip-peak-tag">
-                                              TOP STORE
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div className="menuitem-tooltip-row">
-                                          <span>Active Promos</span>
-                                          <strong>{st.promoItemCount}</strong>
-                                        </div>
-                                        <div className="menuitem-tooltip-row">
-                                          <span>Promo Qty Sold</span>
-                                          <strong>{formatQty(st.qty)}</strong>
-                                        </div>
-                                        <div className="menuitem-tooltip-row menuitem-tooltip-net">
-                                          <span>Promo Amount</span>
-                                          <strong>₱{formatMoney(st.amt)}</strong>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    <div className="menuitem-bar-plot-slot">
-                                      <div
-                                        className="menuitem-trend-bar-fill"
-                                        style={{ height: `${heightPct}%` }}
-                                      />
-                                    </div>
-
-                                    <div
-                                      className="menuitem-trend-bar-label"
-                                      title={st.locationName}
-                                    >
-                                      {st.shortLabel}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 2. Daily / Monthly Promotion Sales Trend Chart */}
-              <div className="menuitem-flat-panel p-3 p-md-4">
-                <div className="d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3 pb-3 mb-3 border-bottom">
-                  <div>
-                    <div className="d-flex align-items-center gap-2 flex-wrap">
-                      <TrendingUp size={18} className="bom-charcoal-text" />
-                      <h3 className="h6 fw-bold mb-0 bom-main-heading">
-                        {trendGranularity === 'monthly'
-                          ? 'Monthly Promotion Performance Trend'
-                          : 'Daily Promotion Performance Trend'}
-                      </h3>
-                      <span className="menuitem-meta-pill">
-                        {loadedFilters.locationName === 'ALL'
-                          ? 'All Stores'
-                          : loadedFilters.locationName}
-                      </span>
-
-                      <div
-                        className="menuitem-info-trigger-wrap"
-                        onMouseEnter={() => setShowChartInfo(true)}
-                        onMouseLeave={() => setShowChartInfo(false)}
-                      >
-                        <button
-                          type="button"
-                          className="menuitem-info-icon-btn"
-                          onClick={() => setShowChartInfo((v) => !v)}
-                          aria-label="Chart interaction tips"
-                        >
-                          <Info size={14} />
-                        </button>
-                        {showChartInfo && (
-                          <div className="menuitem-info-popover" role="tooltip">
-                            Hover over any bar to inspect Business Date, Promo Qty
-                            Sold, and Promo Amount.
-                          </div>
+                            <Pin size={13} />
+                            <span>Pin Top {Math.min(3, consolidatedPromos.length)} Plans Now</span>
+                          </button>
                         )}
                       </div>
-                    </div>
-                    <p className="menuitem-chart-subtext mb-0 mt-1">
-                      Peak {trendGranularity === 'monthly' ? 'Month' : 'Day'}:{' '}
-                      <strong>{trendStats.peakLabel}</strong> (
-                      {trendMetric === 'amt'
-                        ? `₱${formatMoney(trendStats.peakVal)}`
-                        : `${formatQty(trendStats.peakVal)} units`}
-                      ) • Avg per {trendGranularity === 'monthly' ? 'Month' : 'Day'}:{' '}
-                      <strong>
-                        {trendMetric === 'amt'
-                          ? `₱${formatMoney(trendStats.avgVal)}`
-                          : `${formatQty(trendStats.avgVal)} units`}
-                      </strong>
-                    </p>
-                  </div>
-
-                  {/* Chart Controls */}
-                  <div className="d-flex flex-wrap align-items-center gap-2">
-                    <div className="btn-group btn-group-sm" role="group">
-                      <button
-                        type="button"
-                        className={`btn ${
-                          trendSortOrder === 'chronological'
-                            ? 'menuitem-seg-btn-active'
-                            : 'menuitem-seg-btn'
-                        }`}
-                        onClick={() => setTrendSortOrder('chronological')}
-                      >
-                        Date Order
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn ${
-                          trendSortOrder === 'desc'
-                            ? 'menuitem-seg-btn-active'
-                            : 'menuitem-seg-btn'
-                        }`}
-                        onClick={() => setTrendSortOrder('desc')}
-                      >
-                        Highest First
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn ${
-                          trendSortOrder === 'asc'
-                            ? 'menuitem-seg-btn-active'
-                            : 'menuitem-seg-btn'
-                        }`}
-                        onClick={() => setTrendSortOrder('asc')}
-                      >
-                        Lowest First
-                      </button>
-                    </div>
-
-                    <div className="btn-group btn-group-sm" role="group">
-                      <button
-                        type="button"
-                        className={`btn ${
-                          trendGranularity === 'daily'
-                            ? 'menuitem-seg-btn-active'
-                            : 'menuitem-seg-btn'
-                        }`}
-                        onClick={() => setTrendGranularity('daily')}
-                      >
-                        Daily View
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn ${
-                          trendGranularity === 'monthly'
-                            ? 'menuitem-seg-btn-active'
-                            : 'menuitem-seg-btn'
-                        }`}
-                        onClick={() => setTrendGranularity('monthly')}
-                      >
-                        Monthly View
-                      </button>
-                    </div>
-
-                    <div className="btn-group btn-group-sm" role="group">
-                      <button
-                        type="button"
-                        className={`btn ${
-                          trendMetric === 'amt'
-                            ? 'menuitem-seg-btn-active'
-                            : 'menuitem-seg-btn'
-                        }`}
-                        onClick={() => setTrendMetric('amt')}
-                      >
-                        Amount (₱)
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn ${
-                          trendMetric === 'qty'
-                            ? 'menuitem-seg-btn-active'
-                            : 'menuitem-seg-btn'
-                        }`}
-                        onClick={() => setTrendMetric('qty')}
-                      >
-                        Qty Sold
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {trendSeries.length === 0 ? (
-                  <div className="text-center py-4 menuitem-empty-state">
-                    No daily promotion trend data available for the selected period.
-                  </div>
-                ) : (
-                  <div className="menuitem-chart-stage">
-                    <div className="menuitem-chart-layout">
-                      <div className="menuitem-yaxis-col" aria-hidden="true">
-                        {trendStats.ticks.map((tickVal, idx) => (
-                          <div key={idx} className="menuitem-yaxis-label">
-                            {formatAxisTick(tickVal, trendMetric)}
+                    ) : (
+                      <>
+                        {pinnedPlans.length === 1 && consolidatedPromos.length > 1 && (
+                          <div className="d-flex align-items-center justify-content-between gap-2 px-3 py-2 mb-3 rounded-3 border bg-light small">
+                            <span className="menuitem-chart-subtext">
+                              Pin 1 to 3 more promotional plans from the Leaderboard for full side-by-side comparison.
+                            </span>
+                            <button
+                              type="button"
+                              className="promo-pin-btn"
+                              onClick={() => handlePinTopPlans(3)}
+                            >
+                              Pin Top 3 Plans
+                            </button>
                           </div>
-                        ))}
-                      </div>
+                        )}
 
-                      <div className="menuitem-trend-bars-scroll">
-                        <div
-                          className="menuitem-plot-canvas"
-                          style={{
-                            minWidth: Math.max(trendSeries.length * 60, 480),
-                          }}
-                        >
-                          <div className="menuitem-gridlines-layer" aria-hidden="true">
-                            {trendStats.ticks.map((_, idx) => (
-                              <div
-                                key={idx}
-                                className={`menuitem-gridline-row ${
-                                  idx === trendStats.ticks.length - 1 ? 'baseline' : ''
-                                }`}
-                              />
-                            ))}
-                          </div>
-
-                          <div className="menuitem-trend-bars-grid">
-                            {trendSeries.map((pt, idx) => {
-                              const val = trendMetric === 'amt' ? pt.amt : pt.qty;
-                              const heightPct =
-                                trendStats.axisMax > 0
-                                  ? Math.min(
-                                      100,
-                                      Math.max((val / trendStats.axisMax) * 100, val > 0 ? 3 : 0)
-                                    )
-                                  : 0;
-                              const isHovered = hoveredTrendIndex === idx;
-                              const isPeak =
-                                pt.periodKey === trendStats.peakKey && trendStats.peakVal > 0;
-                              const tooltipAlignClass =
-                                idx <= 1
-                                  ? 'align-left'
-                                  : idx >= trendSeries.length - 2
-                                  ? 'align-right'
-                                  : 'align-center';
-
-                              return (
-                                <div
-                                  key={pt.periodKey}
-                                  className={`menuitem-trend-bar-col ${
-                                    isHovered ? 'hovered' : ''
-                                  } ${isPeak ? 'is-peak' : ''}`}
-                                  onMouseEnter={() => setHoveredTrendIndex(idx)}
-                                  onMouseLeave={() => setHoveredTrendIndex(null)}
-                                  onFocus={() => setHoveredTrendIndex(idx)}
-                                  onBlur={() => setHoveredTrendIndex(null)}
-                                  tabIndex={0}
-                                >
-                                  {isHovered && (
-                                    <div
-                                      className={`menuitem-bar-floating-tooltip ${tooltipAlignClass}`}
-                                      role="tooltip"
+                        <div className="promo-compare-matrix-wrap">
+                          <table className="promo-compare-table">
+                            <thead>
+                              <tr>
+                                <th className="promo-compare-metric-col">
+                                  CAMPAIGN METRIC
+                                </th>
+                                {pinnedPlans.map((plan) => {
+                                  const rankIdx = consolidatedPromos.findIndex(
+                                    (p) => p.itemNumber === plan.itemNumber
+                                  );
+                                  return (
+                                    <th
+                                      key={plan.itemNumber}
+                                      className="promo-compare-plan-col"
                                     >
-                                      <div className="menuitem-tooltip-header">
-                                        <span>{pt.fullLabel}</span>
-                                        {isPeak && (
-                                          <span className="menuitem-tooltip-peak-tag">PEAK</span>
+                                      <div className="d-flex align-items-start justify-content-between gap-2 mb-1">
+                                        <div className="d-flex align-items-center gap-1 flex-wrap">
+                                          {rankIdx >= 0 && (
+                                            <span className="menuitem-rank-badge">
+                                              #{rankIdx + 1}
+                                            </span>
+                                          )}
+                                          <span className="menuitem-code-badge">
+                                            {plan.itemNumber}
+                                          </span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className="menuitem-search-clear position-static"
+                                          onClick={() => togglePinPromo(plan.itemNumber)}
+                                          title={`Unpin ${plan.itemName}`}
+                                          aria-label={`Unpin ${plan.itemName}`}
+                                        >
+                                          <X size={14} />
+                                        </button>
+                                      </div>
+                                      <div
+                                        className="fw-bold bom-charcoal-text text-truncate"
+                                        title={plan.itemName}
+                                      >
+                                        {plan.itemName}
+                                      </div>
+                                    </th>
+                                  );
+                                })}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {/* 1. Total Promo Amount (₱) */}
+                              <tr>
+                                <th scope="row" className="promo-compare-metric-col">
+                                  Total Promo Amount (₱)
+                                </th>
+                                {pinnedPlans.map((plan) => {
+                                  const sharePct =
+                                    visibleTotals.amt > 0
+                                      ? (plan.amt / visibleTotals.amt) * 100
+                                      : 0;
+                                  const isLeader =
+                                    pinnedPlans.length > 1 &&
+                                    plan.amt > 0 &&
+                                    plan.amt === compareStats.maxAmt;
+                                  return (
+                                    <td
+                                      key={plan.itemNumber}
+                                      className="promo-compare-plan-col"
+                                    >
+                                      <div className="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                        <span className="fw-bold bom-charcoal-text">
+                                          ₱{formatMoney(plan.amt)}
+                                        </span>
+                                        {isLeader && (
+                                          <span className="promo-compare-leader-badge">
+                                            HIGHEST
+                                          </span>
                                         )}
                                       </div>
-                                      <div className="menuitem-tooltip-row">
-                                        <span>Promo Qty Sold</span>
-                                        <strong>{formatQty(pt.qty)}</strong>
+                                      <div className="d-flex align-items-center gap-2">
+                                        <div className="promo-inline-share-track flex-grow-1">
+                                          <div
+                                            className="promo-inline-share-fill"
+                                            style={{
+                                              width: `${Math.min(
+                                                100,
+                                                Math.max(sharePct, sharePct > 0 ? 4 : 0)
+                                              )}%`,
+                                            }}
+                                          />
+                                        </div>
+                                        <span className="menuitem-chart-subtext small">
+                                          {sharePct.toFixed(1)}%
+                                        </span>
                                       </div>
-                                      <div className="menuitem-tooltip-row menuitem-tooltip-net">
-                                        <span>Promo Amount</span>
-                                        <strong>₱{formatMoney(pt.amt)}</strong>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+
+                              {/* 2. Qty Sold */}
+                              <tr>
+                                <th scope="row" className="promo-compare-metric-col">
+                                  Qty Sold
+                                </th>
+                                {pinnedPlans.map((plan) => {
+                                  const qtySharePct =
+                                    visibleTotals.qty > 0
+                                      ? (plan.qty / visibleTotals.qty) * 100
+                                      : 0;
+                                  const isLeader =
+                                    pinnedPlans.length > 1 &&
+                                    plan.qty > 0 &&
+                                    plan.qty === compareStats.maxQty;
+                                  return (
+                                    <td
+                                      key={plan.itemNumber}
+                                      className="promo-compare-plan-col"
+                                    >
+                                      <div className="d-flex align-items-center justify-content-between gap-2">
+                                        <span className="fw-bold bom-charcoal-text">
+                                          {formatQty(plan.qty)} units
+                                        </span>
+                                        {isLeader && (
+                                          <span className="promo-compare-leader-badge">
+                                            HIGHEST
+                                          </span>
+                                        )}
                                       </div>
-                                    </div>
-                                  )}
+                                      <div className="menuitem-chart-subtext small">
+                                        {qtySharePct.toFixed(1)}% of total promo units
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
 
-                                  <div className="menuitem-bar-plot-slot">
-                                    <div
-                                      className="menuitem-trend-bar-fill"
-                                      style={{ height: `${heightPct}%` }}
-                                    />
-                                  </div>
+                              {/* 3. Guest Checks (checkCount) */}
+                              <tr>
+                                <th scope="row" className="promo-compare-metric-col">
+                                  Guest Checks
+                                </th>
+                                {pinnedPlans.map((plan) => {
+                                  const unitsPerCheck =
+                                    plan.checkCount > 0 ? plan.qty / plan.checkCount : 0;
+                                  const isLeader =
+                                    pinnedPlans.length > 1 &&
+                                    plan.checkCount > 0 &&
+                                    plan.checkCount === compareStats.maxChecks;
+                                  return (
+                                    <td
+                                      key={plan.itemNumber}
+                                      className="promo-compare-plan-col"
+                                    >
+                                      <div className="d-flex align-items-center justify-content-between gap-2">
+                                        <span className="fw-bold bom-charcoal-text">
+                                          {plan.checkCount.toLocaleString('en-PH')} checks
+                                        </span>
+                                        {isLeader && (
+                                          <span className="promo-compare-leader-badge">
+                                            MOST
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="menuitem-chart-subtext small">
+                                        Avg {unitsPerCheck.toFixed(2)} promo units / check
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
 
-                                  <div className="menuitem-trend-bar-label" title={pt.fullLabel}>
-                                    {pt.shortLabel}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                              {/* 4. Avg Promo Price (amt / qty) */}
+                              <tr>
+                                <th scope="row" className="promo-compare-metric-col">
+                                  Avg Promo Price
+                                </th>
+                                {pinnedPlans.map((plan) => {
+                                  const avgPrice = plan.qty > 0 ? plan.amt / plan.qty : 0;
+                                  const isLeader =
+                                    pinnedPlans.length > 1 &&
+                                    avgPrice > 0 &&
+                                    Math.abs(avgPrice - compareStats.maxAvgPrice) < 0.005;
+                                  return (
+                                    <td
+                                      key={plan.itemNumber}
+                                      className="promo-compare-plan-col"
+                                    >
+                                      <div className="d-flex align-items-center justify-content-between gap-2">
+                                        <span className="fw-bold bom-charcoal-text">
+                                          ₱{formatMoney(avgPrice)}
+                                        </span>
+                                        {isLeader && (
+                                          <span className="promo-compare-leader-badge">
+                                            PREMIUM
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="menuitem-chart-subtext small">
+                                        Revenue per promo unit
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+
+                              {/* 5. Store Reach (storeCount) */}
+                              <tr>
+                                <th scope="row" className="promo-compare-metric-col">
+                                  Store Reach
+                                </th>
+                                {pinnedPlans.map((plan) => {
+                                  const reachPct =
+                                    visibleTotals.storeCount > 0
+                                      ? (plan.storeCount / visibleTotals.storeCount) * 100
+                                      : 0;
+                                  const isLeader =
+                                    pinnedPlans.length > 1 &&
+                                    plan.storeCount > 0 &&
+                                    plan.storeCount === compareStats.maxStoreCount;
+                                  return (
+                                    <td
+                                      key={plan.itemNumber}
+                                      className="promo-compare-plan-col"
+                                    >
+                                      <div className="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                        <span className="fw-bold bom-charcoal-text">
+                                          {plan.storeCount} / {visibleTotals.storeCount} store(s)
+                                        </span>
+                                        {isLeader && (
+                                          <span className="promo-compare-leader-badge">
+                                            BROADEST
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="d-flex align-items-center gap-2">
+                                        <div className="promo-inline-share-track flex-grow-1">
+                                          <div
+                                            className="promo-inline-share-fill"
+                                            style={{
+                                              width: `${Math.min(100, Math.max(reachPct, 4))}%`,
+                                            }}
+                                          />
+                                        </div>
+                                        <span className="menuitem-chart-subtext small">
+                                          {reachPct.toFixed(0)}%
+                                        </span>
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+
+                              {/* 6. Top Store */}
+                              <tr>
+                                <th scope="row" className="promo-compare-metric-col">
+                                  Top Store
+                                </th>
+                                {pinnedPlans.map((plan) => {
+                                  const topStoreShare =
+                                    plan.amt > 0 && plan.topStoreAmt
+                                      ? (plan.topStoreAmt / plan.amt) * 100
+                                      : 0;
+                                  return (
+                                    <td
+                                      key={plan.itemNumber}
+                                      className="promo-compare-plan-col"
+                                    >
+                                      <div className="fw-semibold bom-charcoal-text">
+                                        <span className="rof-mod-badge">
+                                          {plan.topStoreName || '—'}
+                                        </span>
+                                      </div>
+                                      <div className="menuitem-chart-subtext small mt-1">
+                                        ₱{formatMoney(plan.topStoreAmt ?? 0)} (
+                                        {topStoreShare.toFixed(1)}% of plan)
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+
+                              {/* 7. Bundled Zero-Price Receipt Items (activeDrilldown / cached details) */}
+                              <tr>
+                                <th scope="row" className="promo-compare-metric-col">
+                                  Bundled Zero-Price Receipt Items
+                                </th>
+                                {pinnedPlans.map((plan) => {
+                                  const cachedDetail =
+                                    activeDrilldown?.promo.itemNumber === plan.itemNumber
+                                      ? activeDrilldown
+                                      : drilldownByPromo[plan.itemNumber] ?? null;
+                                  const isPlanLoading = Boolean(loadingPromoMap[plan.itemNumber]);
+                                  const isInspecting =
+                                    activeDrilldown?.promo.itemNumber === plan.itemNumber;
+                                  const bundledZeroItems = cachedDetail
+                                    ? cachedDetail.pairedItems.filter(
+                                        (item) => item.isZeroPriceBundleItem
+                                      )
+                                    : [];
+
+                                  return (
+                                    <td
+                                      key={plan.itemNumber}
+                                      className="promo-compare-plan-col"
+                                    >
+                                      {cachedDetail ? (
+                                        <div className="d-flex flex-column gap-2">
+                                          <div className="d-flex align-items-center justify-content-between gap-1 small">
+                                            <span className="fw-semibold bom-charcoal-text">
+                                              {bundledZeroItems.length} Zero-Price Item(s)
+                                            </span>
+                                            <span className="menuitem-chart-subtext">
+                                              {cachedDetail.pairedItems.length} total paired
+                                            </span>
+                                          </div>
+
+                                          {bundledZeroItems.length === 0 ? (
+                                            <div className="menuitem-chart-subtext small">
+                                              No zero-price bundle items on matched checks.
+                                            </div>
+                                          ) : (
+                                            <div className="promo-compare-bundle-list">
+                                              {bundledZeroItems.slice(0, 4).map((bItem) => (
+                                                <div
+                                                  key={`${bItem.itemNumber}-${bItem.majorGroup}`}
+                                                  className="promo-compare-bundle-item"
+                                                >
+                                                  <div className="min-w-0">
+                                                    <div
+                                                      className="fw-semibold bom-charcoal-text text-truncate"
+                                                      title={bItem.itemName}
+                                                    >
+                                                      {bItem.itemName}
+                                                    </div>
+                                                    <div className="menuitem-chart-subtext">
+                                                      #{bItem.itemNumber} • {bItem.majorGroup}
+                                                    </div>
+                                                  </div>
+                                                  <span className="fw-bold bom-charcoal-text text-nowrap">
+                                                    {formatQty(bItem.totalQty)} qty
+                                                  </span>
+                                                </div>
+                                              ))}
+                                              {bundledZeroItems.length > 4 && (
+                                                <div className="menuitem-chart-subtext small">
+                                                  +{bundledZeroItems.length - 4} more bundled item(s)
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+
+                                          <button
+                                            type="button"
+                                            className={`promo-inspect-btn w-100 ${
+                                              isInspecting ? 'active' : ''
+                                            }`}
+                                            onClick={() => {
+                                              if (isInspecting) {
+                                                setActiveDrilldown(null);
+                                              } else {
+                                                setActiveDrilldown(cachedDetail);
+                                              }
+                                            }}
+                                          >
+                                            <Eye size={13} />
+                                            <span>
+                                              {isInspecting
+                                                ? 'Hide Full Receipt Table'
+                                                : 'Inspect All Receipt Items'}
+                                            </span>
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="d-flex flex-column gap-2">
+                                          <span className="menuitem-chart-subtext small">
+                                            Inspect guest check items rung up alongside this promotion plan.
+                                          </span>
+                                          <button
+                                            type="button"
+                                            className="promo-inspect-btn w-100"
+                                            onClick={() =>
+                                              handleInspectPromoDetails({
+                                                itemNumber: plan.itemNumber,
+                                                itemName: plan.itemName,
+                                                preserveScroll: true,
+                                              })
+                                            }
+                                            disabled={isPlanLoading}
+                                          >
+                                            <Receipt size={13} />
+                                            <span>
+                                              {isPlanLoading
+                                                ? 'Inspecting Checks...'
+                                                : 'Load Bundled Receipt Items'}
+                                            </span>
+                                          </button>
+                                        </div>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 3. Side-by-Side Rankings: Top 10 Promotions + Store Performance Comparison */}
-              <div className="row g-3">
-                {/* Left Column: Top 10 Promotions */}
-                <div className="col-12 col-xl-6">
-                  <div className="menuitem-flat-panel p-3 p-md-4 h-100">
-                    <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 pb-3 mb-3 border-bottom">
-                      <div className="d-flex align-items-center gap-2">
-                        <Award size={18} className="bom-charcoal-text" />
-                        <div>
-                          <h3 className="h6 fw-bold mb-0 bom-main-heading">
-                            Top Performing Promotions
-                          </h3>
-                          <span className="menuitem-chart-subtext">
-                            Click any promotion to inspect its receipt items in Monitoring view
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="btn-group btn-group-sm" role="group">
-                        <button
-                          type="button"
-                          className={`btn ${
-                            topPromoMetric === 'amt'
-                              ? 'menuitem-seg-btn-active'
-                              : 'menuitem-seg-btn'
-                          }`}
-                          onClick={() => setTopPromoMetric('amt')}
-                        >
-                          By Amount (₱)
-                        </button>
-                        <button
-                          type="button"
-                          className={`btn ${
-                            topPromoMetric === 'qty'
-                              ? 'menuitem-seg-btn-active'
-                              : 'menuitem-seg-btn'
-                          }`}
-                          onClick={() => setTopPromoMetric('qty')}
-                        >
-                          By Qty
-                        </button>
-                      </div>
-                    </div>
-
-                    {top10Promos.length === 0 ? (
-                      <div className="text-center py-4 menuitem-empty-state">
-                        No promotion data available.
-                      </div>
-                    ) : (
-                      <div className="d-flex flex-column gap-2">
-                        {top10Promos.map((promo, idx) => {
-                          const maxVal =
-                            topPromoMetric === 'amt'
-                              ? top10Promos[0]?.amt || 1
-                              : top10Promos[0]?.qty || 1;
-                          const currVal = topPromoMetric === 'amt' ? promo.amt : promo.qty;
-                          const barPct = Math.max((currVal / maxVal) * 100, 3);
-                          const sharePct =
-                            topPromoMetric === 'amt'
-                              ? visibleTotals.amt > 0
-                                ? (promo.amt / visibleTotals.amt) * 100
-                                : 0
-                              : visibleTotals.qty > 0
-                              ? (promo.qty / visibleTotals.qty) * 100
-                              : 0;
-
-                          return (
-                            <div
-                              key={promo.itemNumber}
-                              className="menuitem-rank-row"
-                              style={{ cursor: 'pointer' }}
-                              onClick={() => {
-                                setActiveTab('monitoring');
-                                handleInspectPromoDetails({
-                                  itemNumber: promo.itemNumber,
-                                  itemName: promo.itemName,
-                                });
-                              }}
-                              title="Click to inspect items used in this promotion"
-                            >
-                              <div className="d-flex align-items-center justify-content-between gap-2 mb-1 small">
-                                <div className="d-flex align-items-center gap-2 min-w-0">
-                                  <span className="menuitem-rank-badge">#{idx + 1}</span>
-                                  <span className="menuitem-code-badge">
-                                    {promo.itemNumber}
-                                  </span>
-                                  <span
-                                    className="fw-semibold bom-charcoal-text text-truncate"
-                                    title={promo.itemName}
-                                  >
-                                    {promo.itemName}
-                                  </span>
-                                  <span className="menuitem-chart-subtext d-none d-md-inline">
-                                    ({promo.storeCount} store{promo.storeCount === 1 ? '' : 's'})
-                                  </span>
-                                </div>
-                                <div className="text-nowrap fw-bold bom-charcoal-text">
-                                  {topPromoMetric === 'amt'
-                                    ? `₱${formatMoney(promo.amt)}`
-                                    : `${formatQty(promo.qty)} pcs`}{' '}
-                                  <span className="menuitem-chart-subtext fw-normal">
-                                    ({sharePct.toFixed(1)}%)
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="menuitem-progress-track">
-                                <div
-                                  className="menuitem-progress-fill"
-                                  style={{ width: `${barPct}%` }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      </>
                     )}
                   </div>
                 </div>
+              </div>
 
-                {/* Right Column: Store Performance Breakdown */}
-                <div className="col-12 col-xl-6">
+              {/* ===========================================================
+                  IN-PLACE RECEIPT ITEMS INSPECTOR (SHARED DRILL-DOWN PANEL)
+                  Renders right below Tier 1 in Analytics without switching tabs!
+                  =========================================================== */}
+              {(drilldownLoading || drilldownError || activeDrilldown) && (
+                <PromoReceiptDrilldownPanel
+                  panelRef={drilldownPanelRef}
+                  drilldownLoading={drilldownLoading}
+                  drilldownError={drilldownError}
+                  activeDrilldown={activeDrilldown}
+                  filteredPairedItems={filteredPairedItems}
+                  availableDrilldownMajorGroups={availableDrilldownMajorGroups}
+                  drilldownRoleFilter={drilldownRoleFilter}
+                  setDrilldownRoleFilter={setDrilldownRoleFilter}
+                  drilldownMajorGroup={drilldownMajorGroup}
+                  setDrilldownMajorGroup={setDrilldownMajorGroup}
+                  onClose={() => {
+                    setActiveDrilldown(null);
+                    setDrilldownError(null);
+                  }}
+                />
+              )}
+
+              {/* ===========================================================
+                  TIER 2: PER-STORE DISTRIBUTION & LOCATION SHARE BREAKDOWN
+                  =========================================================== */}
+              <div className="promo-tier-section">
+                <div
+                  className={`promo-tier2-grid ${
+                    isAllStoresLoaded || storeChartSeries.length > 1 ? '' : 'single-col'
+                  }`}
+                >
+                  {/* Per-Store Bar Chart */}
+                  {(isAllStoresLoaded || storeChartSeries.length > 1) && (
+                    <div className="menuitem-flat-panel p-3 p-md-4 h-100">
+                      <div className="d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3 pb-3 mb-3 border-bottom">
+                        <div>
+                          <div className="d-flex align-items-center gap-2 flex-wrap">
+                            <StoreIcon size={18} className="bom-charcoal-text" />
+                            <h3 className="h6 fw-bold mb-0 bom-main-heading">
+                              Promotion Performance Graph per Store
+                            </h3>
+                            <span className="menuitem-meta-pill">
+                              {storeChartSeries.length} Active Store(s)
+                            </span>
+                            {loadedFilters.promoName && (
+                              <span className="menuitem-meta-pill">
+                                Promo: <strong>{loadedFilters.promoName}</strong>
+                              </span>
+                            )}
+                            {selectedStoreFilter && (
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-secondary py-0 px-2"
+                                onClick={() => setSelectedStoreFilter('')}
+                              >
+                                Clear Store Filter ({selectedStoreFilter})
+                              </button>
+                            )}
+                          </div>
+                          <p className="menuitem-chart-subtext mb-0 mt-1">
+                            Top Store: <strong>{storeChartStats.topStoreLabel}</strong> (
+                            {storeRankMetric === 'amt'
+                              ? `₱${formatMoney(storeChartStats.topStoreVal)}`
+                              : `${formatQty(storeChartStats.topStoreVal)} units`}
+                            ) • Avg per Store:{' '}
+                            <strong>
+                              {storeRankMetric === 'amt'
+                                ? `₱${formatMoney(storeChartStats.avgVal)}`
+                                : `${formatQty(storeChartStats.avgVal)} units`}
+                            </strong>{' '}
+                            • Click any bar to filter by store.
+                          </p>
+                        </div>
+
+                        {/* Store Chart Sort & Metric Controls */}
+                        <div className="d-flex flex-wrap align-items-center gap-2">
+                          <div
+                            className="btn-group btn-group-sm"
+                            role="group"
+                            aria-label="Store Sort Order"
+                          >
+                            <button
+                              type="button"
+                              className={`btn ${
+                                storeChartSortOrder === 'desc'
+                                  ? 'menuitem-seg-btn-active'
+                                  : 'menuitem-seg-btn'
+                              }`}
+                              onClick={() => setStoreChartSortOrder('desc')}
+                            >
+                              Highest First
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn ${
+                                storeChartSortOrder === 'asc'
+                                  ? 'menuitem-seg-btn-active'
+                                  : 'menuitem-seg-btn'
+                              }`}
+                              onClick={() => setStoreChartSortOrder('asc')}
+                            >
+                              Lowest First
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn ${
+                                storeChartSortOrder === 'alpha'
+                                  ? 'menuitem-seg-btn-active'
+                                  : 'menuitem-seg-btn'
+                              }`}
+                              onClick={() => setStoreChartSortOrder('alpha')}
+                            >
+                              Store Name (A–Z)
+                            </button>
+                          </div>
+
+                          <div
+                            className="btn-group btn-group-sm"
+                            role="group"
+                            aria-label="Store Metric"
+                          >
+                            <button
+                              type="button"
+                              className={`btn ${
+                                storeRankMetric === 'amt'
+                                  ? 'menuitem-seg-btn-active'
+                                  : 'menuitem-seg-btn'
+                              }`}
+                              onClick={() => setStoreRankMetric('amt')}
+                            >
+                              Amount (₱)
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn ${
+                                storeRankMetric === 'qty'
+                                  ? 'menuitem-seg-btn-active'
+                                  : 'menuitem-seg-btn'
+                              }`}
+                              onClick={() => setStoreRankMetric('qty')}
+                            >
+                              Qty Sold
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {storeChartSeries.length === 0 ? (
+                        <div className="text-center py-4 menuitem-empty-state">
+                          No per-store promotion data available for the selected filters.
+                        </div>
+                      ) : (
+                        <div className="menuitem-chart-stage">
+                          <div className="menuitem-chart-layout">
+                            {/* Left Y-Axis Labels */}
+                            <div className="menuitem-yaxis-col" aria-hidden="true">
+                              {storeChartStats.ticks.map((tickVal, idx) => (
+                                <div key={idx} className="menuitem-yaxis-label">
+                                  {formatAxisTick(tickVal, storeRankMetric)}
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Horizontally Scrollable Per-Store Bar Plot */}
+                            <div className="menuitem-trend-bars-scroll">
+                              <div
+                                className="menuitem-plot-canvas"
+                                style={{
+                                  minWidth: Math.max(storeChartSeries.length * 64, 480),
+                                }}
+                              >
+                                <div className="menuitem-gridlines-layer" aria-hidden="true">
+                                  {storeChartStats.ticks.map((_, idx) => (
+                                    <div
+                                      key={idx}
+                                      className={`menuitem-gridline-row ${
+                                        idx === storeChartStats.ticks.length - 1
+                                          ? 'baseline'
+                                          : ''
+                                      }`}
+                                    />
+                                  ))}
+                                </div>
+
+                                <div className="menuitem-trend-bars-grid">
+                                  {storeChartSeries.map((st, idx) => {
+                                    const val = storeRankMetric === 'amt' ? st.amt : st.qty;
+                                    const heightPct =
+                                      storeChartStats.axisMax > 0
+                                        ? Math.min(
+                                            100,
+                                            Math.max(
+                                              (val / storeChartStats.axisMax) * 100,
+                                              val > 0 ? 3 : 0
+                                            )
+                                          )
+                                        : 0;
+                                    const isHovered = hoveredStoreIndex === idx;
+                                    const isTop =
+                                      st.locationName === storeChartStats.topStoreKey &&
+                                      storeChartStats.topStoreVal > 0;
+                                    const isSelectedStore =
+                                      selectedStoreFilter === st.locationName;
+                                    const tooltipAlignClass =
+                                      idx <= 1
+                                        ? 'align-left'
+                                        : idx >= storeChartSeries.length - 2
+                                        ? 'align-right'
+                                        : 'align-center';
+
+                                    return (
+                                      <div
+                                        key={st.locationName}
+                                        className={`menuitem-trend-bar-col ${
+                                          isHovered ? 'hovered' : ''
+                                        } ${isTop || isSelectedStore ? 'is-peak' : ''}`}
+                                        style={{ cursor: 'pointer' }}
+                                        onMouseEnter={() => setHoveredStoreIndex(idx)}
+                                        onMouseLeave={() => setHoveredStoreIndex(null)}
+                                        onFocus={() => setHoveredStoreIndex(idx)}
+                                        onBlur={() => setHoveredStoreIndex(null)}
+                                        onClick={() =>
+                                          setSelectedStoreFilter((curr) =>
+                                            curr === st.locationName ? '' : st.locationName
+                                          )
+                                        }
+                                        tabIndex={0}
+                                        aria-label={`${st.locationName}: Amount ₱${formatMoney(
+                                          st.amt
+                                        )}, Qty ${formatQty(st.qty)}, Checks ${st.checkCount}`}
+                                      >
+                                        {isHovered && (
+                                          <div
+                                            className={`menuitem-bar-floating-tooltip ${tooltipAlignClass}`}
+                                            role="tooltip"
+                                          >
+                                            <div className="menuitem-tooltip-header">
+                                              <span>{st.locationName}</span>
+                                              {isTop && (
+                                                <span className="menuitem-tooltip-peak-tag">
+                                                  TOP STORE
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="menuitem-tooltip-row">
+                                              <span>Active Promos</span>
+                                              <strong>{st.promoItemCount}</strong>
+                                            </div>
+                                            <div className="menuitem-tooltip-row">
+                                              <span>Guest Checks</span>
+                                              <strong>
+                                                {st.checkCount.toLocaleString('en-PH')}
+                                              </strong>
+                                            </div>
+                                            <div className="menuitem-tooltip-row">
+                                              <span>Promo Qty Sold</span>
+                                              <strong>{formatQty(st.qty)}</strong>
+                                            </div>
+                                            <div className="menuitem-tooltip-row menuitem-tooltip-net">
+                                              <span>Promo Amount</span>
+                                              <strong>₱{formatMoney(st.amt)}</strong>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        <div className="menuitem-bar-plot-slot">
+                                          <div
+                                            className="menuitem-trend-bar-fill"
+                                            style={{ height: `${heightPct}%` }}
+                                          />
+                                        </div>
+
+                                        <div
+                                          className="menuitem-trend-bar-label"
+                                          title={st.locationName}
+                                        >
+                                          {st.shortLabel}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Store Location Share & Ranking */}
                   <div className="menuitem-flat-panel p-3 p-md-4 h-100">
                     <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 pb-3 mb-3 border-bottom">
                       <div className="d-flex align-items-center gap-2">
@@ -2401,7 +3154,7 @@ export function PromotionsReport() {
                     ) : (
                       <div
                         className="d-flex flex-column gap-2 overflow-auto pe-1"
-                        style={{ maxHeight: '420px' }}
+                        style={{ maxHeight: '360px' }}
                       >
                         {storePerformance.map((st, idx) => {
                           const isSelected = selectedStoreFilter === st.locationName;
@@ -2419,6 +3172,7 @@ export function PromotionsReport() {
                               : visibleTotals.qty > 0
                               ? (st.qty / visibleTotals.qty) * 100
                               : 0;
+                          const avgUnit = st.qty > 0 ? st.amt / st.qty : 0;
 
                           return (
                             <button
@@ -2463,7 +3217,9 @@ export function PromotionsReport() {
                                 style={{ fontSize: '12px' }}
                               >
                                 <span>
-                                  Qty: {formatQty(st.qty)}
+                                  Qty: {formatQty(st.qty)} • Checks:{' '}
+                                  {st.checkCount.toLocaleString('en-PH')} • Avg: ₱
+                                  {formatMoney(avgUnit)}
                                 </span>
                                 <span className="text-truncate ms-2" title={st.topPromoName}>
                                   Top: {st.topPromoName}
@@ -2477,8 +3233,299 @@ export function PromotionsReport() {
                   </div>
                 </div>
               </div>
-            </>
+
+              {/* ===========================================================
+                  TIER 3: DAILY / MONTHLY PROMOTION PERFORMANCE TREND
+                  =========================================================== */}
+              <div className="promo-tier-section">
+                <div className="menuitem-flat-panel p-3 p-md-4">
+                  <div className="d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3 pb-3 mb-3 border-bottom">
+                    <div>
+                      <div className="d-flex align-items-center gap-2 flex-wrap">
+                        <TrendingUp size={18} className="bom-charcoal-text" />
+                        <h3 className="h6 fw-bold mb-0 bom-main-heading">
+                          {trendGranularity === 'monthly'
+                            ? 'Monthly Promotion Performance Trend'
+                            : 'Daily Promotion Performance Trend'}
+                        </h3>
+                        <span className="menuitem-meta-pill">
+                          {loadedFilters.locationName === 'ALL'
+                            ? 'All Stores'
+                            : loadedFilters.locationName}
+                        </span>
+
+                        <div
+                          className="menuitem-info-trigger-wrap"
+                          onMouseEnter={() => setShowChartInfo(true)}
+                          onMouseLeave={() => setShowChartInfo(false)}
+                        >
+                          <button
+                            type="button"
+                            className="menuitem-info-icon-btn"
+                            onClick={() => setShowChartInfo((v) => !v)}
+                            aria-label="Chart interaction tips"
+                          >
+                            <Info size={14} />
+                          </button>
+                          {showChartInfo && (
+                            <div className="menuitem-info-popover" role="tooltip">
+                              Hover over any bar to inspect Business Date, Guest Checks,
+                              Promo Qty Sold, and Promo Amount.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <p className="menuitem-chart-subtext mb-0 mt-1">
+                        Peak {trendGranularity === 'monthly' ? 'Month' : 'Day'}:{' '}
+                        <strong>{trendStats.peakLabel}</strong> (
+                        {trendMetric === 'amt'
+                          ? `₱${formatMoney(trendStats.peakVal)}`
+                          : `${formatQty(trendStats.peakVal)} units`}
+                        ) • Avg per {trendGranularity === 'monthly' ? 'Month' : 'Day'}:{' '}
+                        <strong>
+                          {trendMetric === 'amt'
+                            ? `₱${formatMoney(trendStats.avgVal)}`
+                            : `${formatQty(trendStats.avgVal)} units`}
+                        </strong>
+                      </p>
+                    </div>
+
+                    {/* Chart Controls */}
+                    <div className="d-flex flex-wrap align-items-center gap-2">
+                      <div className="btn-group btn-group-sm" role="group">
+                        <button
+                          type="button"
+                          className={`btn ${
+                            trendSortOrder === 'chronological'
+                              ? 'menuitem-seg-btn-active'
+                              : 'menuitem-seg-btn'
+                          }`}
+                          onClick={() => setTrendSortOrder('chronological')}
+                        >
+                          Date Order
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn ${
+                            trendSortOrder === 'desc'
+                              ? 'menuitem-seg-btn-active'
+                              : 'menuitem-seg-btn'
+                          }`}
+                          onClick={() => setTrendSortOrder('desc')}
+                        >
+                          Highest First
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn ${
+                            trendSortOrder === 'asc'
+                              ? 'menuitem-seg-btn-active'
+                              : 'menuitem-seg-btn'
+                          }`}
+                          onClick={() => setTrendSortOrder('asc')}
+                        >
+                          Lowest First
+                        </button>
+                      </div>
+
+                      <div className="btn-group btn-group-sm" role="group">
+                        <button
+                          type="button"
+                          className={`btn ${
+                            trendGranularity === 'daily'
+                              ? 'menuitem-seg-btn-active'
+                              : 'menuitem-seg-btn'
+                          }`}
+                          onClick={() => setTrendGranularity('daily')}
+                        >
+                          Daily View
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn ${
+                            trendGranularity === 'monthly'
+                              ? 'menuitem-seg-btn-active'
+                              : 'menuitem-seg-btn'
+                          }`}
+                          onClick={() => setTrendGranularity('monthly')}
+                        >
+                          Monthly View
+                        </button>
+                      </div>
+
+                      <div className="btn-group btn-group-sm" role="group">
+                        <button
+                          type="button"
+                          className={`btn ${
+                            trendMetric === 'amt'
+                              ? 'menuitem-seg-btn-active'
+                              : 'menuitem-seg-btn'
+                          }`}
+                          onClick={() => setTrendMetric('amt')}
+                        >
+                          Amount (₱)
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn ${
+                            trendMetric === 'qty'
+                              ? 'menuitem-seg-btn-active'
+                              : 'menuitem-seg-btn'
+                          }`}
+                          onClick={() => setTrendMetric('qty')}
+                        >
+                          Qty Sold
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {trendSeries.length === 0 ? (
+                    <div className="text-center py-4 menuitem-empty-state">
+                      No daily promotion trend data available for the selected period.
+                    </div>
+                  ) : (
+                    <div className="menuitem-chart-stage">
+                      <div className="menuitem-chart-layout">
+                        <div className="menuitem-yaxis-col" aria-hidden="true">
+                          {trendStats.ticks.map((tickVal, idx) => (
+                            <div key={idx} className="menuitem-yaxis-label">
+                              {formatAxisTick(tickVal, trendMetric)}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="menuitem-trend-bars-scroll">
+                          <div
+                            className="menuitem-plot-canvas"
+                            style={{
+                              minWidth: Math.max(trendSeries.length * 60, 480),
+                            }}
+                          >
+                            <div className="menuitem-gridlines-layer" aria-hidden="true">
+                              {trendStats.ticks.map((_, idx) => (
+                                <div
+                                  key={idx}
+                                  className={`menuitem-gridline-row ${
+                                    idx === trendStats.ticks.length - 1 ? 'baseline' : ''
+                                  }`}
+                                />
+                              ))}
+                            </div>
+
+                            <div className="menuitem-trend-bars-grid">
+                              {trendSeries.map((pt, idx) => {
+                                const val = trendMetric === 'amt' ? pt.amt : pt.qty;
+                                const heightPct =
+                                  trendStats.axisMax > 0
+                                    ? Math.min(
+                                        100,
+                                        Math.max(
+                                          (val / trendStats.axisMax) * 100,
+                                          val > 0 ? 3 : 0
+                                        )
+                                      )
+                                    : 0;
+                                const isHovered = hoveredTrendIndex === idx;
+                                const isPeak =
+                                  pt.periodKey === trendStats.peakKey &&
+                                  trendStats.peakVal > 0;
+                                const tooltipAlignClass =
+                                  idx <= 1
+                                    ? 'align-left'
+                                    : idx >= trendSeries.length - 2
+                                    ? 'align-right'
+                                    : 'align-center';
+
+                                return (
+                                  <div
+                                    key={pt.periodKey}
+                                    className={`menuitem-trend-bar-col ${
+                                      isHovered ? 'hovered' : ''
+                                    } ${isPeak ? 'is-peak' : ''}`}
+                                    onMouseEnter={() => setHoveredTrendIndex(idx)}
+                                    onMouseLeave={() => setHoveredTrendIndex(null)}
+                                    onFocus={() => setHoveredTrendIndex(idx)}
+                                    onBlur={() => setHoveredTrendIndex(null)}
+                                    tabIndex={0}
+                                  >
+                                    {isHovered && (
+                                      <div
+                                        className={`menuitem-bar-floating-tooltip ${tooltipAlignClass}`}
+                                        role="tooltip"
+                                      >
+                                        <div className="menuitem-tooltip-header">
+                                          <span>{pt.fullLabel}</span>
+                                          {isPeak && (
+                                            <span className="menuitem-tooltip-peak-tag">
+                                              PEAK
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="menuitem-tooltip-row">
+                                          <span>Guest Checks</span>
+                                          <strong>
+                                            {pt.checkCount.toLocaleString('en-PH')}
+                                          </strong>
+                                        </div>
+                                        <div className="menuitem-tooltip-row">
+                                          <span>Promo Qty Sold</span>
+                                          <strong>{formatQty(pt.qty)}</strong>
+                                        </div>
+                                        <div className="menuitem-tooltip-row menuitem-tooltip-net">
+                                          <span>Promo Amount</span>
+                                          <strong>₱{formatMoney(pt.amt)}</strong>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <div className="menuitem-bar-plot-slot">
+                                      <div
+                                        className="menuitem-trend-bar-fill"
+                                        style={{ height: `${heightPct}%` }}
+                                      />
+                                    </div>
+
+                                    <div
+                                      className="menuitem-trend-bar-label"
+                                      title={pt.fullLabel}
+                                    >
+                                      {pt.shortLabel}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
+
+          {/* Shared Drill-Down Panel when active in Monitoring tab */}
+          {activeTab === 'monitoring' &&
+            (drilldownLoading || drilldownError || activeDrilldown) && (
+              <PromoReceiptDrilldownPanel
+                panelRef={drilldownPanelRef}
+                drilldownLoading={drilldownLoading}
+                drilldownError={drilldownError}
+                activeDrilldown={activeDrilldown}
+                filteredPairedItems={filteredPairedItems}
+                availableDrilldownMajorGroups={availableDrilldownMajorGroups}
+                drilldownRoleFilter={drilldownRoleFilter}
+                setDrilldownRoleFilter={setDrilldownRoleFilter}
+                drilldownMajorGroup={drilldownMajorGroup}
+                setDrilldownMajorGroup={setDrilldownMajorGroup}
+                onClose={() => {
+                  setActiveDrilldown(null);
+                  setDrilldownError(null);
+                }}
+              />
+            )}
         </div>
       ) : (
         !loading && (
@@ -2700,3 +3747,277 @@ function PromotionCatalogSearchSelect({
     </div>
   );
 }
+
+/**
+ * Click-to-sort table header cell (`<th>`) with keyboard button and directional sort icon.
+ */
+function SortableHeaderCell<T extends string>({
+  label,
+  field,
+  activeField,
+  direction,
+  onSort,
+  align = 'start',
+  style,
+}: {
+  label: string;
+  field: T;
+  activeField: T;
+  direction: TableSortDirection;
+  onSort: (field: T) => void;
+  align?: 'start' | 'center' | 'end';
+  style?: CSSProperties;
+}) {
+  const isSorted = activeField === field;
+  const ariaSort = isSorted
+    ? direction === 'asc'
+      ? 'ascending'
+      : 'descending'
+    : 'none';
+  const alignClass =
+    align === 'end' ? 'align-end' : align === 'center' ? 'align-center' : '';
+
+  return (
+    <th
+      scope="col"
+      aria-sort={ariaSort}
+      className="promo-sortable-th"
+      style={style}
+    >
+      <button
+        type="button"
+        className={`promo-sort-btn ${alignClass} ${isSorted ? 'is-sorted' : ''}`}
+        onClick={() => onSort(field)}
+      >
+        <span>{label}</span>
+        {isSorted ? (
+          direction === 'asc' ? (
+            <ArrowUp size={13} className="promo-sort-icon" />
+          ) : (
+            <ArrowDown size={13} className="promo-sort-icon" />
+          )
+        ) : (
+          <ArrowUpDown size={13} className="promo-sort-icon" />
+        )}
+      </button>
+    </th>
+  );
+}
+
+/**
+ * Shared Promotion Receipt & Bundled Zero-Price Items Inspector Panel.
+ * Renders in-place in both Analytics (Tier 1) and Monitoring views without losing scroll context.
+ */
+function PromoReceiptDrilldownPanel({
+  panelRef,
+  drilldownLoading,
+  drilldownError,
+  activeDrilldown,
+  filteredPairedItems,
+  availableDrilldownMajorGroups,
+  drilldownRoleFilter,
+  setDrilldownRoleFilter,
+  drilldownMajorGroup,
+  setDrilldownMajorGroup,
+  onClose,
+}: {
+  panelRef: RefObject<HTMLDivElement | null>;
+  drilldownLoading: boolean;
+  drilldownError: string | null;
+  activeDrilldown: PromotionCheckDetailsResponse | null;
+  filteredPairedItems: PromotionPairedItem[];
+  availableDrilldownMajorGroups: Array<{ majorGroup: string; count: number }>;
+  drilldownRoleFilter: 'all' | 'target' | 'zero-price' | 'co-sold';
+  setDrilldownRoleFilter: (
+    role: 'all' | 'target' | 'zero-price' | 'co-sold'
+  ) => void;
+  drilldownMajorGroup: string;
+  setDrilldownMajorGroup: (mg: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div ref={panelRef} className="menuitem-flat-panel p-3 p-md-4 border-primary">
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 pb-3 mb-3 border-bottom">
+        <div className="d-flex align-items-center gap-3 min-w-0">
+          <div className="bom-header-icon-badge d-flex align-items-center justify-content-center rounded-3 flex-shrink-0">
+            <PackageCheck size={19} />
+          </div>
+          <div className="min-w-0">
+            <div className="d-flex align-items-center gap-2 flex-wrap">
+              <h3 className="h6 fw-bold mb-0 bom-main-heading">
+                Promotion Details &amp; Items Used in Receipts
+              </h3>
+              {activeDrilldown && (
+                <span className="menuitem-code-badge">
+                  #{activeDrilldown.promo.itemNumber}
+                </span>
+              )}
+              {activeDrilldown && (
+                <span className="menuitem-meta-pill">
+                  Store:{' '}
+                  <strong>
+                    {activeDrilldown.promo.locationName === 'ALL'
+                      ? 'All Stores'
+                      : activeDrilldown.promo.locationName}
+                  </strong>
+                </span>
+              )}
+            </div>
+            {activeDrilldown && (
+              <p className="menuitem-chart-subtext mb-0 mt-1">
+                <strong>{activeDrilldown.promo.itemName}</strong> — Matched Checks:{' '}
+                <strong>
+                  {activeDrilldown.promo.totalChecksMatched.toLocaleString('en-PH')}
+                </strong>{' '}
+                • Promo Qty:{' '}
+                <strong>{formatQty(activeDrilldown.promo.totalPromoQty)}</strong> •
+                Promo Amount:{' '}
+                <strong>₱{formatMoney(activeDrilldown.promo.totalPromoAmt)}</strong>
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="d-flex flex-wrap align-items-center gap-2">
+          {activeDrilldown && (
+            <>
+              <span className="menuitem-meta-pill">
+                Items Used in Promo ({filteredPairedItems.length})
+              </span>
+
+              {/* Item Role Filter */}
+              <select
+                className="form-select form-select-sm menuitem-toolbar-select"
+                value={drilldownRoleFilter}
+                onChange={(e) =>
+                  setDrilldownRoleFilter(
+                    e.target.value as 'all' | 'target' | 'zero-price' | 'co-sold'
+                  )
+                }
+                aria-label="Filter by Item Role"
+              >
+                <option value="all">All Item Roles</option>
+                <option value="target">Target Promotion</option>
+                <option value="zero-price">Bundled / Zero-Price Item</option>
+                <option value="co-sold">Co-Sold on Receipt</option>
+              </select>
+
+              {/* Filter Items by Major Group */}
+              <select
+                className="form-select form-select-sm menuitem-toolbar-select"
+                value={drilldownMajorGroup}
+                onChange={(e) => setDrilldownMajorGroup(e.target.value)}
+                aria-label="Filter items by Major Group"
+              >
+                <option value="">
+                  All Major Groups ({activeDrilldown.pairedItems.length})
+                </option>
+                {availableDrilldownMajorGroups.map((mg) => (
+                  <option key={mg.majorGroup} value={mg.majorGroup}>
+                    {mg.majorGroup} ({mg.count})
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+            onClick={onClose}
+          >
+            <X size={14} />
+            <span>Close</span>
+          </button>
+        </div>
+      </div>
+
+      {drilldownLoading && (
+        <div className="text-center py-4 text-secondary">
+          <span
+            className="spinner-border spinner-border-sm text-primary me-2"
+            role="status"
+          />
+          Inspecting items used for this promotion...
+        </div>
+      )}
+
+      {drilldownError && (
+        <div className="alert alert-danger py-2 small mb-0">{drilldownError}</div>
+      )}
+
+      {!drilldownLoading && activeDrilldown && (
+        <div className="table-responsive rof-grid-scroll-container">
+          <table className="table align-middle mb-0 bom-data-table menuitem-summary-table">
+            <thead>
+              <tr>
+                <th style={{ width: '120px' }}>ITEM NUMBER</th>
+                <th>ITEM NAME (USED IN PROMO)</th>
+                <th style={{ width: '150px' }}>MAJOR GROUP</th>
+                <th style={{ width: '150px' }}>FAMILY GROUP</th>
+                <th style={{ width: '195px' }}>ITEM ROLE</th>
+                <th className="text-end" style={{ width: '120px' }}>
+                  CHECK FREQ
+                </th>
+                <th className="text-end" style={{ width: '130px' }}>
+                  TOTAL QTY
+                </th>
+                <th className="text-end" style={{ width: '155px' }}>
+                  LINE AMOUNT
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredPairedItems.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="text-center py-4 text-secondary">
+                    No items matched the selected Item Role / Major Group filter.
+                  </td>
+                </tr>
+              ) : (
+                filteredPairedItems.map((item) => (
+                  <tr
+                    key={`${item.itemNumber}-${item.majorGroup}-${item.familyGroup}`}
+                    className={item.isSelectedPromo ? 'table-warning' : ''}
+                  >
+                    <td className="menuitem-code-cell text-nowrap">
+                      <span className="menuitem-code-badge">{item.itemNumber}</span>
+                    </td>
+                    <td className="menuitem-name-cell fw-semibold">{item.itemName}</td>
+                    <td>
+                      <span className="rof-mod-badge">{item.majorGroup}</span>
+                    </td>
+                    <td className="menuitem-secondary-cell">{item.familyGroup}</td>
+                    <td>
+                      {item.isSelectedPromo ? (
+                        <span className="badge bg-primary-subtle text-primary border border-primary-subtle">
+                          Target Promotion
+                        </span>
+                      ) : item.isZeroPriceBundleItem ? (
+                        <span className="badge bg-success-subtle text-success border border-success-subtle">
+                          Bundled / Zero-Price Item
+                        </span>
+                      ) : (
+                        <span className="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                          Co-Sold on Receipt
+                        </span>
+                      )}
+                    </td>
+                    <td className="num-cell menuitem-cell-active">
+                      {item.checkFrequency.toLocaleString('en-PH')}
+                    </td>
+                    <td className="num-cell fw-semibold">{formatQty(item.totalQty)}</td>
+                    <td className="num-cell fw-bold bom-charcoal-text">
+                      ₱{formatMoney(item.totalAmt)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+

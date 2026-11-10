@@ -28,6 +28,8 @@ function getPageTitle(page: Page): string {
       return 'Menu Item';
     case 'promotions':
       return 'Promotion Monitoring & Analytics';
+    case 'sales-target':
+      return 'Quarterly Sales Target & Analytics';
     case 'tender-listing':
       return 'Tender Listing';
     case 'rof':

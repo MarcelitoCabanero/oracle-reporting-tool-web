@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Store,
   Tag,
+  Target,
   TrendingUp,
 } from 'lucide-react';
 import type { Page } from '../components/navigation/Sidebar';
@@ -181,6 +182,15 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
                     title="Promotion Monitoring"
                     description="Track promos, receipt items & performance"
                     onClick={() => onNavigate('promotions')}
+                  />
+                </div>
+
+                <div className="col-12 col-md-6">
+                  <QuickAction
+                    icon={<Target size={19} className="text-secondary" />}
+                    title="Quarterly Sales Target"
+                    description="Suggest targets, category qty & YoY analytics"
+                    onClick={() => onNavigate('sales-target')}
                   />
                 </div>
               </div>

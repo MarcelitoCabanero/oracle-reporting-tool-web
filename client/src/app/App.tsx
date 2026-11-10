@@ -8,6 +8,7 @@ import { DepositMonitoring } from '../features/deposit/DepositMonitoring';
 import { MenuItemReport } from '../features/menuitem/MenuItemReport';
 import { SystemSalesSummary } from '../features/systemsales/SystemSalesSummary';
 import { PromotionsReport } from '../features/promotions/PromotionsReport';
+import { SalesTargetReport } from '../features/salestarget/SalesTargetReport';
 import { SessionTimeoutModal } from '../components/common/SessionTimeoutModal';
 import { useAuth } from '../features/auth/AuthContext';
 import type { Page, Theme } from '../components/navigation/Sidebar';
@@ -24,6 +25,7 @@ const validPages: Page[] = [
   'system-sales',
   'menu-item',
   'promotions',
+  'sales-target',
   'tender-listing',
   'rof',
   'deposit',
@@ -181,6 +183,12 @@ export function App() {
       {(visitedPages.promotions || activePage === 'promotions') && (
         <div style={{ display: activePage === 'promotions' ? 'block' : 'none' }}>
           <PromotionsReport />
+        </div>
+      )}
+
+      {(visitedPages['sales-target'] || activePage === 'sales-target') && (
+        <div style={{ display: activePage === 'sales-target' ? 'block' : 'none' }}>
+          <SalesTargetReport />
         </div>
       )}
 

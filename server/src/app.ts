@@ -12,6 +12,7 @@ import { depositRouter } from './modules/deposit/deposit.routes.js';
 import { menuItemRouter } from './modules/menuitem/menuitem.routes.js';
 import { systemSalesRouter } from './modules/systemsales/systemsales.routes.js';
 import { promotionsRouter } from './modules/promotions/promotions.routes.js';
+import { salesTargetRouter } from './modules/salestarget/salestarget.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +43,7 @@ app.use('/api/reports/deposit', depositRouter);
 app.use('/api/reports/menu-item', menuItemRouter);
 app.use('/api/reports/system-sales', systemSalesRouter);
 app.use('/api/reports/promotions', promotionsRouter);
+app.use('/api/reports/sales-target', salesTargetRouter);
 
 // Serve built frontend static assets in production / Docker
 const clientDistCandidates = [
