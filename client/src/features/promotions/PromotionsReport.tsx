@@ -1251,7 +1251,7 @@ export function PromotionsReport() {
           </div>
 
           {/* 2. Promotion Name Filter (from dbo.dts_object WHERE majorgroup = 'Promotion') */}
-          <div className="menuitem-filter-group menuitem-filter-store" style={{ minWidth: '280px' }}>
+          <div className="menuitem-filter-group menuitem-filter-store promo-catalog-filter">
             <label htmlFor="promotions-object-select" className="menuitem-filter-label">
               Promotion Name
             </label>
@@ -1526,6 +1526,7 @@ export function PromotionsReport() {
                         className="menuitem-search-clear"
                         onClick={() => setSearchQuery('')}
                         title="Clear search"
+                        aria-label="Clear search"
                       >
                         <X size={13} />
                       </button>
@@ -2875,7 +2876,7 @@ export function PromotionsReport() {
                                 ? `₱${formatMoney(storeChartStats.avgVal)}`
                                 : `${formatQty(storeChartStats.avgVal)} units`}
                             </strong>{' '}
-                            • Click any bar to filter by store.
+                            • Select any bar to filter by store.
                           </p>
                         </div>
 
@@ -3031,7 +3032,17 @@ export function PromotionsReport() {
                                             curr === st.locationName ? '' : st.locationName
                                           )
                                         }
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault();
+                                            setSelectedStoreFilter((curr) =>
+                                              curr === st.locationName ? '' : st.locationName
+                                            );
+                                          }
+                                        }}
                                         tabIndex={0}
+                                        role="button"
+                                        aria-pressed={isSelectedStore}
                                         aria-label={`${st.locationName}: Amount ₱${formatMoney(
                                           st.amt
                                         )}, Qty ${formatQty(st.qty)}, Checks ${st.checkCount}`}
@@ -3264,12 +3275,20 @@ export function PromotionsReport() {
                             className="menuitem-info-icon-btn"
                             onClick={() => setShowChartInfo((v) => !v)}
                             aria-label="Chart interaction tips"
+                            aria-expanded={showChartInfo}
+                            aria-controls={
+                              showChartInfo ? 'promo-chart-interaction-tips' : undefined
+                            }
                           >
                             <Info size={14} />
                           </button>
                           {showChartInfo && (
-                            <div className="menuitem-info-popover" role="tooltip">
-                              Hover over any bar to inspect Business Date, Guest Checks,
+                            <div
+                              className="menuitem-info-popover"
+                              id="promo-chart-interaction-tips"
+                              role="tooltip"
+                            >
+                              Hover over or focus any bar to inspect Business Date, Guest Checks,
                               Promo Qty Sold, and Promo Amount.
                             </div>
                           )}
@@ -3448,6 +3467,10 @@ export function PromotionsReport() {
                                     onFocus={() => setHoveredTrendIndex(idx)}
                                     onBlur={() => setHoveredTrendIndex(null)}
                                     tabIndex={0}
+                                    role="img"
+                                    aria-label={`${pt.fullLabel}: Amount ₱${formatMoney(
+                                      pt.amt
+                                    )}, Qty ${formatQty(pt.qty)}, Guest Checks ${pt.checkCount}`}
                                   >
                                     {isHovered && (
                                       <div
@@ -4020,4 +4043,3 @@ function PromoReceiptDrilldownPanel({
     </div>
   );
 }
-

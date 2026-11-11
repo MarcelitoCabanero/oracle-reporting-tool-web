@@ -7553,6 +7553,15 @@ html[data-theme='dark'] .store-search-empty {
   --p-density: 1;
 }
 
+.promo-catalog-filter {
+  min-width: 280px;
+}
+
+.promo-campaign-workspace .menuitem-trend-bar-col:focus-visible {
+  outline: 2px solid var(--brand-orange-dark, #E95B0B);
+  outline-offset: 2px;
+}
+
 .promo-tier-stack {
   display: flex;
   flex-direction: column;
@@ -7677,6 +7686,12 @@ html[data-theme='dark'] .store-search-empty {
 .promo-inspect-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.promo-pin-btn:focus-visible,
+.promo-inspect-btn:focus-visible {
+  outline: 2px solid var(--brand-orange-dark, #E95B0B);
+  outline-offset: 2px;
 }
 
 /* Pin-to-Compare Matrix Table */
@@ -7817,7 +7832,11 @@ html[data-theme='dark'] .store-search-empty {
 .promo-sort-btn:focus-visible {
   background-color: #E2E8F0;
   color: #0F172A;
-  outline: none;
+}
+
+.promo-sort-btn:focus-visible {
+  outline: 2px solid var(--brand-orange-dark, #E95B0B);
+  outline-offset: -2px;
 }
 
 .promo-sort-btn.is-sorted {
@@ -7868,6 +7887,17 @@ html[data-theme='dark'] .store-search-empty {
   .promo-tier1-grid,
   .promo-tier2-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .promo-catalog-filter {
+    min-width: 0;
+  }
+
+  .promo-pin-btn,
+  .promo-inspect-btn {
+    min-height: 36px;
   }
 }
 
@@ -7983,4 +8013,3 @@ html[data-theme='dark'] .promo-inline-share-track {
 html[data-theme='dark'] .promo-inline-share-fill {
   background: linear-gradient(90deg, #94A3B8 0%, #64748B 100%);
 }
-
