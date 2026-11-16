@@ -408,104 +408,180 @@ BEGIN
     ORDER BY s.LocationName ASC, tm.TargetMonth ASC;
 
     /* =====================================================================
-       STEP C: Category Mix % Suggestions (from dbo.dts_details + dbo.dts_object)
-       First aggregate dts_details by LocationName, IsWeekendOrHd, ITEMNUMBER, ITEMNAME
-       for Last Year Same Quarter so pattern matching runs on a small summary set.
+       STEP C: Category Mix % Suggestions (from pre-aggregated agg_daily_* tables
+       populated by dbo.usp_RefreshDailySummaries)
+       Uses Same Quarter Last Year (@LYStartDate..@LYEndDate) if the store has
+       Last Year data; otherwise falls back to the store's Basis Month window.
        ===================================================================== */
     SELECT
-        d.locationname AS LocationName,
-        ISNULL(cal.IsWeekendOrHd, 0) AS IsWeekendOrHd,
-        d.ITEMNUMBER,
-        MAX(d.ITEMNAME) AS ITEMNAME,
-        MAX(d.MAJORGROUPNAME) AS MajorGroupName,
-        MAX(d.FAMILYGROUPNAME) AS FamilyGroupName,
-        SUM(ISNULL(d.netsales, 0)) AS NetSales,
-        SUM(ISNULL(d.LINETOTAL, 0)) AS GrossSales,
-        SUM(ISNULL(d.LINECOUNT, 0)) AS QtySold
-    INTO #ItemLevelSummary
-    FROM [dbo].[dts_details] d
-    INNER JOIN #ActiveStores s
-        ON s.LocationName = d.locationname
-    LEFT JOIN #QuarterCalendar cal
-        ON cal.CalDate = d.businessdate
-    WHERE d.businessdate BETWEEN @LYStartDate AND @LYEndDate
-      AND d.TRANSACTIONTYPE = 'Item Sale'
-      AND d.ITEMNUMBER NOT IN (9801, 9802, 9803)
-    GROUP BY
-        d.locationname,
-        ISNULL(cal.IsWeekendOrHd, 0),
-        d.ITEMNUMBER;
+        s.LocationName,
+        CASE WHEN EXISTS (
+            SELECT 1 FROM #LYMonthlyActuals ly WHERE ly.LocationName = s.LocationName AND ly.LY_NetSales > 0
+        ) THEN @LYStartDate ELSE ISNULL(bm.StoreBasisMonthDate, @BasisMonthDate) END AS CatWindowStart,
+        CASE WHEN EXISTS (
+            SELECT 1 FROM #LYMonthlyActuals ly WHERE ly.LocationName = s.LocationName AND ly.LY_NetSales > 0
+        ) THEN @LYEndDate ELSE ISNULL(bm.StoreBasisMonthEnd, @BasisMonthEnd) END AS CatWindowEnd
+    INTO #StoreCatWindow
+    FROM #ActiveStores s
+    LEFT JOIN #BasisMonthActuals bm
+        ON bm.LocationName = s.LocationName;
 
-    -- For new stores with no Last Year Same Quarter data, fallback to Basis Month transactions
-    INSERT INTO #ItemLevelSummary (
-        LocationName, IsWeekendOrHd, ITEMNUMBER, ITEMNAME,
-        MajorGroupName, FamilyGroupName, NetSales, GrossSales, QtySold
+    ;WITH DailyCatUnion AS (
+        -- 1. DONUT (agg_daily_donut)
+        SELECT
+            d.locationname AS LocationName,
+            d.businessdate AS BusinessDate,
+            'DONUT' AS CategoryCode,
+            ROUND((ISNULL(d.Donut_vat, 0) / 1.12) + (ISNULL(d.Donut_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.Total_donut, 0) AS GrossSales,
+            CAST(ISNULL(d.total_donut_qty, 0) AS DECIMAL(18, 4)) AS QtySold
+        FROM [dbo].[agg_daily_donut] d
+        INNER JOIN #StoreCatWindow w
+            ON w.LocationName = d.locationname
+           AND d.businessdate BETWEEN w.CatWindowStart AND w.CatWindowEnd
+
+        UNION ALL
+
+        -- 2. JCLUB (agg_daily_jclub)
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'JCLUB' AS CategoryCode,
+            ROUND((ISNULL(d.jclub_vat, 0) / 1.12) + (ISNULL(d.jclub_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.total_jclub, 0) AS GrossSales,
+            CAST(ISNULL(d.total_jclub_qty, 0) AS DECIMAL(18, 4)) AS QtySold
+        FROM [dbo].[agg_daily_jclub] d
+        INNER JOIN #StoreCatWindow w
+            ON w.LocationName = d.locationname
+           AND d.businessdate BETWEEN w.CatWindowStart AND w.CatWindowEnd
+
+        UNION ALL
+
+        -- 3. JPOPS (agg_daily_jpops — convert total_jpops_qty PCS to BOXES by dividing by 24.0)
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'JPOPS' AS CategoryCode,
+            ROUND((ISNULL(d.jpops_vat, 0) / 1.12) + (ISNULL(d.jpops_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.total_jpops, 0) AS GrossSales,
+            CAST(ISNULL(d.total_jpops_qty, 0) / 24.0 AS DECIMAL(18, 4)) AS QtySold
+        FROM [dbo].[agg_daily_jpops] d
+        INNER JOIN #StoreCatWindow w
+            ON w.LocationName = d.locationname
+           AND d.businessdate BETWEEN w.CatWindowStart AND w.CatWindowEnd
+
+        UNION ALL
+
+        -- 4. BEVERAGE (agg_daily_beverage — include bev_promo_qty in Qty)
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'BEVERAGE' AS CategoryCode,
+            ROUND((ISNULL(d.bev_vat, 0) / 1.12) + (ISNULL(d.bev_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.total_bev_amt, 0) AS GrossSales,
+            CAST(ISNULL(d.total_bev_qty, 0) + ISNULL(d.bev_promo_qty, 0) AS DECIMAL(18, 4)) AS QtySold
+        FROM [dbo].[agg_daily_beverage] d
+        INNER JOIN #StoreCatWindow w
+            ON w.LocationName = d.locationname
+           AND d.businessdate BETWEEN w.CatWindowStart AND w.CatWindowEnd
+
+        UNION ALL
+
+        -- 5. JCOOL (agg_daily_jcool — cups + promo, excluding free/paid toppings)
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'JCOOL' AS CategoryCode,
+            ROUND((ISNULL(d.jcool_vat, 0) / 1.12) + (ISNULL(d.jcool_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.total_jcool, 0) AS GrossSales,
+            CAST(
+                ISNULL(d.jcoolS_qty, 0) + ISNULL(d.jcoolC_qty, 0) + ISNULL(d.jcoolSH_qty, 0)
+              + ISNULL(d.jcoolT_qty, 0) + ISNULL(d.jcoolTG_qty, 0) + ISNULL(d.jcoolpromo_qty, 0)
+              AS DECIMAL(18, 4)
+            ) AS QtySold
+        FROM [dbo].[agg_daily_jcool] d
+        INNER JOIN #StoreCatWindow w
+            ON w.LocationName = d.locationname
+           AND d.businessdate BETWEEN w.CatWindowStart AND w.CatWindowEnd
+
+        UNION ALL
+
+        -- 6. PASTRY_PASTA (agg_daily_pastries — Pandesal, Turnover, Cookies, Croissant, Pasta)
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'PASTRY_PASTA' AS CategoryCode,
+            ROUND((ISNULL(d.pastries_vat, 0) / 1.12) + (ISNULL(d.pastries_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.Total_pastries, 0) AS GrossSales,
+            CAST(ISNULL(d.Total_pastries_qty, 0) AS DECIMAL(18, 4)) AS QtySold
+        FROM [dbo].[agg_daily_pastries] d
+        INNER JOIN #StoreCatWindow w
+            ON w.LocationName = d.locationname
+           AND d.businessdate BETWEEN w.CatWindowStart AND w.CatWindowEnd
+
+        UNION ALL
+
+        -- 7. FOOD (agg_daily_food — All-Day Bfast, Mains, Mains-Pasta, Salad, Sides, Soup, Add-Ons, PromoF)
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'FOOD' AS CategoryCode,
+            ROUND((ISNULL(d.Food_vat, 0) / 1.12) + (ISNULL(d.Food_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.Total_food_amt, 0) AS GrossSales,
+            CAST(ISNULL(d.total_food_qty, 0) AS DECIMAL(18, 4)) AS QtySold
+        FROM [dbo].[agg_daily_food] d
+        INNER JOIN #StoreCatWindow w
+            ON w.LocationName = d.locationname
+           AND d.businessdate BETWEEN w.CatWindowStart AND w.CatWindowEnd
+
+        UNION ALL
+
+        -- 8. BREWBOX (agg_daily_brewbox — brewbox + brew1dzn + brewjpops2dzn + brewcombo)
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'BREWBOX' AS CategoryCode,
+            ROUND((ISNULL(d.Brewbox_vat, 0) / 1.12) + (ISNULL(d.Brewbox_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.total_brewbox, 0) AS GrossSales,
+            CAST(
+                ISNULL(d.brewbox_qty, 0) + ISNULL(d.brew1dzn_qty, 0)
+              + ISNULL(d.brewjpops2dzn_qty, 0) + ISNULL(d.brewcombo_qty, 0)
+              AS DECIMAL(18, 4)
+            ) AS QtySold
+        FROM [dbo].[agg_daily_brewbox] d
+        INNER JOIN #StoreCatWindow w
+            ON w.LocationName = d.locationname
+           AND d.businessdate BETWEEN w.CatWindowStart AND w.CatWindowEnd
+    ),
+    DailyMarked AS (
+        SELECT
+            u.LocationName,
+            u.CategoryCode,
+            CASE
+                WHEN ((DATEDIFF(DAY, '19000101', u.BusinessDate) % 7) + 1) IN (6, 7) THEN 1
+                WHEN h.HolidayID IS NOT NULL THEN 1
+                ELSE 0
+            END AS IsWeekendOrHd,
+            u.NetSales,
+            u.GrossSales,
+            u.QtySold
+        FROM DailyCatUnion u
+        LEFT JOIN [dbo].[tbl_sales_calendar_holiday] h
+            ON h.HolidayDate = u.BusinessDate
+           AND h.IsActive = 1
+           AND h.TreatAsWeekend = 1
     )
     SELECT
-        d.locationname AS LocationName,
-        CASE
-            WHEN ((DATEDIFF(DAY, '19000101', d.businessdate) % 7) + 1) IN (6, 7) THEN 1
-            WHEN h.HolidayID IS NOT NULL THEN 1
-            ELSE 0
-        END AS IsWeekendOrHd,
-        d.ITEMNUMBER,
-        MAX(d.ITEMNAME) AS ITEMNAME,
-        MAX(d.MAJORGROUPNAME) AS MajorGroupName,
-        MAX(d.FAMILYGROUPNAME) AS FamilyGroupName,
-        SUM(ISNULL(d.netsales, 0)) AS NetSales,
-        SUM(ISNULL(d.LINETOTAL, 0)) AS GrossSales,
-        SUM(ISNULL(d.LINECOUNT, 0)) AS QtySold
-    FROM [dbo].[dts_details] d
-    INNER JOIN #BasisMonthActuals bm
-        ON bm.LocationName = d.locationname
-       AND d.businessdate BETWEEN bm.StoreBasisMonthDate AND bm.StoreBasisMonthEnd
-    LEFT JOIN [dbo].[tbl_sales_calendar_holiday] h
-        ON h.HolidayDate = d.businessdate
-       AND h.IsActive = 1
-       AND h.TreatAsWeekend = 1
-    WHERE d.TRANSACTIONTYPE = 'Item Sale'
-      AND d.ITEMNUMBER NOT IN (9801, 9802, 9803)
-      AND NOT EXISTS (
-          SELECT 1 FROM #ItemLevelSummary existing
-          WHERE existing.LocationName = d.locationname
-      )
-    GROUP BY
-        d.locationname,
-        CASE
-            WHEN ((DATEDIFF(DAY, '19000101', d.businessdate) % 7) + 1) IN (6, 7) THEN 1
-            WHEN h.HolidayID IS NOT NULL THEN 1
-            ELSE 0
-        END,
-        d.ITEMNUMBER;
-
-    -- Map each summarized item to Target Category via dbo.dts_object & tbl_sales_target_category_map
-    SELECT
-        ils.LocationName,
-        ISNULL(mapped.CategoryCode, 'DONUT') AS CategoryCode,
-        SUM(CASE WHEN ils.IsWeekendOrHd = 0 THEN ils.NetSales ELSE 0 END) AS WeekdayNetSales,
-        SUM(CASE WHEN ils.IsWeekendOrHd = 1 THEN ils.NetSales ELSE 0 END) AS WeekendHdNetSales,
-        SUM(ils.NetSales) AS TotalCategoryNetSales,
-        SUM(ils.GrossSales) AS TotalCategoryGrossSales,
-        SUM(ils.QtySold) AS TotalCategoryQty
+        LocationName,
+        CategoryCode,
+        SUM(CASE WHEN IsWeekendOrHd = 0 THEN NetSales ELSE 0 END) AS WeekdayNetSales,
+        SUM(CASE WHEN IsWeekendOrHd = 1 THEN NetSales ELSE 0 END) AS WeekendHdNetSales,
+        SUM(NetSales) AS TotalCategoryNetSales,
+        SUM(GrossSales) AS TotalCategoryGrossSales,
+        SUM(QtySold) AS TotalCategoryQty
     INTO #StoreCategoryActuals
-    FROM #ItemLevelSummary ils
-    LEFT JOIN [dbo].[dts_object] obj
-        ON ils.ITEMNUMBER = obj.itemnumber
-    OUTER APPLY (
-        SELECT TOP 1 m.CategoryCode
-        FROM [dbo].[tbl_sales_target_category_map] m
-        WHERE m.IsActive = 1
-          AND (
-              (m.MatchType = 'FAMILYGROUP'   AND ISNULL(ils.FamilyGroupName, ISNULL(obj.familygroup, '')) LIKE m.MatchValue)
-           OR (m.MatchType = 'MAJORGROUP'    AND ISNULL(ils.MajorGroupName, ISNULL(obj.majorgroup, ''))   LIKE m.MatchValue)
-           OR (m.MatchType = 'ITEMNAME_LIKE' AND ISNULL(ils.ITEMNAME, ISNULL(obj.itemname, ''))           LIKE m.MatchValue)
-           OR (m.MatchType = 'ITEMNUMBER'    AND CAST(ils.ITEMNUMBER AS VARCHAR(50)) = m.MatchValue)
-          )
-        ORDER BY m.Priority ASC, m.MapID ASC
-    ) mapped
-    GROUP BY
-        ils.LocationName,
-        ISNULL(mapped.CategoryCode, 'DONUT');
+    FROM DailyMarked
+    GROUP BY LocationName, CategoryCode;
 
     -- Totals per store for % mix denominator
     SELECT
@@ -575,7 +651,7 @@ BEGIN
     -- Cleanup temp tables
     DROP TABLE IF EXISTS #StoreCategoryTotals;
     DROP TABLE IF EXISTS #StoreCategoryActuals;
-    DROP TABLE IF EXISTS #ItemLevelSummary;
+    DROP TABLE IF EXISTS #StoreCatWindow;
     DROP TABLE IF EXISTS #BasisMonthActuals;
     DROP TABLE IF EXISTS #L2YMonthlyActuals;
     DROP TABLE IF EXISTS #LYMonthlyActuals;

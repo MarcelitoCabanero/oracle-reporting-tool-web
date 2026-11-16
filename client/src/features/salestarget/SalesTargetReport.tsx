@@ -4,9 +4,7 @@ import {
   BarChart3,
   Calendar,
   CheckCircle2,
-  Download,
   FileSpreadsheet,
-  Layers,
   Plus,
   RefreshCw,
   Save,
@@ -43,6 +41,28 @@ import {
 type SalesTargetTab = 'worksheet' | 'analytics' | 'settings';
 type MixSourceMode = 'default' | 'historical';
 type SuggestionBasisOption = 'AUTO' | 'YOY_TREND' | 'BASIS_ADS';
+
+const SALES_TARGET_SESSION_KEY = 'oracle-session-sales-target';
+
+interface SalesTargetSavedSession {
+  activeTab: SalesTargetTab;
+  targetYear: number;
+  targetQuarter: number;
+  selectedStore: string;
+  analyticsStore: string;
+  analyticsMonthFilter: number;
+  analyticsSalesMetric: 'net' | 'gross';
+}
+
+function loadSalesTargetSession(): Partial<SalesTargetSavedSession> {
+  try {
+    const raw = window.sessionStorage.getItem(SALES_TARGET_SESSION_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Partial<SalesTargetSavedSession>;
+  } catch {
+    return {};
+  }
+}
 
 function formatMoney(value: number): string {
   return Number(value || 0).toLocaleString('en-PH', {
@@ -94,9 +114,12 @@ function getQuarterMonths(quarter: number): Array<{ month: number; name: string 
 
 export function SalesTargetReport() {
   const { token } = useAuth();
+  const savedSession = useMemo(() => loadSalesTargetSession(), []);
 
   // Primary navigation tab
-  const [activeTab, setActiveTab] = useState<SalesTargetTab>('worksheet');
+  const [activeTab, setActiveTab] = useState<SalesTargetTab>(
+    () => savedSession.activeTab ?? 'worksheet'
+  );
 
   // Master data state
   const [stores, setStores] = useState<StoreSearchOption[]>([]);
@@ -104,9 +127,13 @@ export function SalesTargetReport() {
   const [categoryMappings, setCategoryMappings] = useState<TargetCategoryMapping[]>([]);
 
   // Shared Quarter / Store Filter state
-  const [targetYear, setTargetYear] = useState<number>(2026);
-  const [targetQuarter, setTargetQuarter] = useState<number>(1);
-  const [selectedStore, setSelectedStore] = useState<string>('');
+  const [targetYear, setTargetYear] = useState<number>(() => savedSession.targetYear ?? 2026);
+  const [targetQuarter, setTargetQuarter] = useState<number>(
+    () => savedSession.targetQuarter ?? 1
+  );
+  const [selectedStore, setSelectedStore] = useState<string>(
+    () => savedSession.selectedStore ?? ''
+  );
 
   // Suggestion Engine parameters
   const [yoyGrowthPctInput, setYoyGrowthPctInput] = useState<number>(5.0); // 5.0%
@@ -119,21 +146,51 @@ export function SalesTargetReport() {
   const [worksheetTarget, setWorksheetTarget] = useState<EditableStoreQuarterTarget | null>(null);
   const [worksheetLoading, setWorksheetLoading] = useState<boolean>(false);
   const [savingTarget, setSavingTarget] = useState<boolean>(false);
-  const [batchGenerating, setBatchGenerating] = useState<boolean>(false);
   const [statusBanner, setStatusBanner] = useState<{
     type: 'success' | 'info' | 'warning' | 'danger';
     message: string;
   } | null>(null);
 
   // Analytics state
-  const [analyticsStore, setAnalyticsStore] = useState<string>('ALL');
-  const [analyticsMonthFilter, setAnalyticsMonthFilter] = useState<number>(0); // 0 = All 3 months
-  const [analyticsSalesMetric, setAnalyticsSalesMetric] = useState<'net' | 'gross'>('net');
-  const [analyticsCategoryMode, setAnalyticsCategoryMode] = useState<'sales' | 'qty'>('sales');
+  const [analyticsStore, setAnalyticsStore] = useState<string>(
+    () => savedSession.analyticsStore ?? 'ALL'
+  );
+  const [analyticsMonthFilter, setAnalyticsMonthFilter] = useState<number>(
+    () => savedSession.analyticsMonthFilter ?? 0
+  ); // 0 = All 3 months
+  const [analyticsSalesMetric, setAnalyticsSalesMetric] = useState<'net' | 'gross'>(
+    () => savedSession.analyticsSalesMetric ?? 'net'
+  );
   const [analyticsLoading, setAnalyticsLoading] = useState<boolean>(false);
   const [analyticsSummary, setAnalyticsSummary] = useState<AnalyticsSummaryRow[]>([]);
   const [analyticsWeekdayWeekend, setAnalyticsWeekdayWeekend] = useState<AnalyticsWeekdayWeekendRow[]>([]);
   const [analyticsCategories, setAnalyticsCategories] = useState<AnalyticsCategoryRow[]>([]);
+
+  // Persist session state to sessionStorage
+  useEffect(() => {
+    try {
+      const payload: SalesTargetSavedSession = {
+        activeTab,
+        targetYear,
+        targetQuarter,
+        selectedStore,
+        analyticsStore,
+        analyticsMonthFilter,
+        analyticsSalesMetric,
+      };
+      window.sessionStorage.setItem(SALES_TARGET_SESSION_KEY, JSON.stringify(payload));
+    } catch {
+      // Ignore sessionStorage quota errors
+    }
+  }, [
+    activeTab,
+    targetYear,
+    targetQuarter,
+    selectedStore,
+    analyticsStore,
+    analyticsMonthFilter,
+    analyticsSalesMetric,
+  ]);
 
   // Calendar & Category Settings state
   const [calendarSummary, setCalendarSummary] = useState<CalendarMonthSummary[]>([]);
@@ -217,8 +274,9 @@ export function SalesTargetReport() {
               { categoryCode: 'JPOPS', categoryName: 'J.POPS', qtyUom: 'BOXES', sortOrder: 3, unitPriceDivisor: 260, weekdayMixPct: 0.09, weekendHdMixPct: 0.09 },
               { categoryCode: 'BEVERAGE', categoryName: 'BEVERAGE', qtyUom: 'PCS', sortOrder: 4, unitPriceDivisor: 119, weekdayMixPct: 0.21, weekendHdMixPct: 0.21 },
               { categoryCode: 'JCOOL', categoryName: 'J.COOL', qtyUom: 'PCS', sortOrder: 5, unitPriceDivisor: 190, weekdayMixPct: 0.02, weekendHdMixPct: 0.02 },
-              { categoryCode: 'PASTRY_PASTA', categoryName: 'PASTRY PASTA', qtyUom: 'PCS', sortOrder: 6, unitPriceDivisor: 340, weekdayMixPct: 0.06, weekendHdMixPct: 0.06 },
-              { categoryCode: 'MERCHANDISE', categoryName: 'MERCHANDISE', qtyUom: 'PCS', sortOrder: 7, unitPriceDivisor: 340, weekdayMixPct: 0, weekendHdMixPct: 0 },
+              { categoryCode: 'PASTRY_PASTA', categoryName: 'PASTRY PASTA', qtyUom: 'PCS', sortOrder: 6, unitPriceDivisor: 150, weekdayMixPct: 0.06, weekendHdMixPct: 0.06 },
+              { categoryCode: 'FOOD', categoryName: 'FOOD', qtyUom: 'PCS', sortOrder: 7, unitPriceDivisor: 340, weekdayMixPct: 0, weekendHdMixPct: 0 },
+              { categoryCode: 'BREWBOX', categoryName: 'BREWBOX', qtyUom: 'BOXES', sortOrder: 8, unitPriceDivisor: 650, weekdayMixPct: 0, weekendHdMixPct: 0 },
             ];
 
       const months: EditableMonthTarget[] = qMonths.map((qm) => {
@@ -535,127 +593,6 @@ export function SalesTargetReport() {
     }
   };
 
-  // Batch-Generate & Save Suggested Targets for ALL Active Stores
-  const handleBatchSuggestAndSaveAllStores = async () => {
-    setBatchGenerating(true);
-    setStatusBanner(null);
-
-    try {
-      const suggestRes = await fetch('/api/reports/sales-target/suggest', {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({
-          targetYear,
-          targetQuarter,
-          locationName: 'ALL',
-          basisMonthDate: basisMonthDateInput || null,
-          yoyGrowthPct: yoyGrowthPctInput / 100,
-          avgPerCheck: avgPerCheckInput,
-        }),
-      });
-
-      if (!suggestRes.ok) {
-        throw new Error('Failed to generate suggestions for all stores.');
-      }
-
-      const suggestData = (await suggestRes.json()) as {
-        monthlySuggestions: MonthlySuggestionRow[];
-        categorySuggestions: CategorySuggestionRow[];
-      };
-
-      const storeNames = Array.from(
-        new Set(suggestData.monthlySuggestions.map((r) => r.LocationName))
-      );
-
-      const batchTargets = storeNames.map((locName) => {
-        const mRows = suggestData.monthlySuggestions.filter((r) => r.LocationName === locName);
-        const cRows = suggestData.categorySuggestions.filter((r) => r.LocationName === locName);
-        const first = mRows[0];
-
-        const resolvedBasis =
-          basisOption === 'AUTO'
-            ? first.RecommendedBasis
-            : basisOption === 'BASIS_ADS'
-              ? 'BASIS_ADS'
-              : 'YOY_TREND';
-
-        return {
-          targetYear,
-          targetQuarter,
-          locationId: first.LocationID,
-          locationName: first.LocationName,
-          orgLocationRef: first.OrgLocationRef,
-          suggestionBasis: resolvedBasis,
-          basisMonthDate: first.BasisMonthDate,
-          yoyGrowthTargetPct: yoyGrowthPctInput / 100,
-          avgPerCheckDefault: avgPerCheckInput,
-          status: 'APPROVED',
-          months: mRows.map((m) => {
-            const targetSales =
-              resolvedBasis === 'BASIS_ADS'
-                ? Number(m.SuggestedTargetBasisADS || m.SuggestedNetSales || 0)
-                : Number(m.SuggestedTargetYoY || m.SuggestedNetSales || 0);
-            const wdPct = Number(m.SuggestedWeekdaySalesPct ?? 0.5);
-            const wePct = Number((1 - wdPct).toFixed(6));
-
-            return {
-              targetMonth: Number(m.TargetMonth),
-              targetNetSales: Math.round(targetSales * 100) / 100,
-              suggestedNetSales: Math.round(targetSales * 100) / 100,
-              lastYearNetSales: Number(m.LastYearNetSales ?? 0),
-              basisMonthAds: Number(m.BasisMonthADS ?? 0),
-              seasonalAdjPct: 0,
-              lessHalfDays: 0,
-              totalOperatingDays: Number(m.TotalOperatingDays),
-              weekdayDays: Number(m.WeekdayDays),
-              weekendHdDays: Number(m.WeekendHdDays),
-              weekdaySalesPct: wdPct,
-              weekendHdSalesPct: wePct,
-              avgPerCheckWeekday: avgPerCheckInput,
-              avgPerCheckWeekendHd: avgPerCheckInput,
-              categories: cRows.map((c) => ({
-                categoryCode: c.CategoryCode,
-                qtyUom: c.QtyUOM,
-                unitPriceDivisor: Number(c.DefaultUnitPrice),
-                weekdayMixPct:
-                  mixSourceMode === 'historical'
-                    ? Number(c.SuggestedWeekdayMixPct)
-                    : Number(c.DefaultMixPct),
-                weekendHdMixPct:
-                  mixSourceMode === 'historical'
-                    ? Number(c.SuggestedWeekendHdMixPct)
-                    : Number(c.DefaultMixPct),
-              })),
-            };
-          }),
-        };
-      });
-
-      const saveRes = await fetch('/api/reports/sales-target', {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({ targets: batchTargets }),
-      });
-
-      if (!saveRes.ok) {
-        const errData = await saveRes.json();
-        throw new Error(errData.error || 'Failed to batch-save store targets.');
-      }
-
-      setStatusBanner({
-        type: 'success',
-        message: `Generated and saved Q${targetQuarter} ${targetYear} Sales Targets for ${batchTargets.length} active stores!`,
-      });
-    } catch (err) {
-      setStatusBanner({
-        type: 'danger',
-        message: err instanceof Error ? err.message : 'Batch target generation failed.',
-      });
-    } finally {
-      setBatchGenerating(false);
-    }
-  };
-
   // Worksheet mutation helpers
   const updateMonthField = (
     monthIndex: number,
@@ -957,62 +894,55 @@ export function SalesTargetReport() {
   };
 
   return (
-    <div className="container-fluid p-0">
-      {/* Top Navigation & Quarter Context Bar */}
-      <div className="card border rounded-4 shadow-sm mb-3 bg-white">
-        <div className="card-body p-3">
-          <div className="d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3">
-            <div>
-              <div className="d-flex align-items-center gap-2 mb-1">
-                <span
-                  className="d-inline-flex align-items-center justify-content-center rounded-3 p-2"
-                  style={{ background: 'var(--brand-orange-soft)', color: 'var(--brand-orange)' }}
-                >
-                  <Target size={20} />
-                </span>
-                <div>
-                  <h4 className="fw-bold mb-0 h5">Quarterly Sales Target & Trend Analytics</h4>
-                  <small className="text-secondary">
-                    Set quarterly store targets (Sales ₱ &amp; Category Qty PCS/BOXES), suggest from YoY/ADS trends, and track achievement
-                  </small>
-                </div>
-              </div>
-            </div>
-
-            {/* Mode Switcher Tabs */}
-            <div className="btn-group" role="group" aria-label="Sales Target Views">
-              <button
-                type="button"
-                className={`btn btn-sm d-flex align-items-center gap-2 px-3 py-2 fw-semibold ${
-                  activeTab === 'worksheet' ? 'btn-primary' : 'btn-outline-secondary'
-                }`}
-                onClick={() => setActiveTab('worksheet')}
-              >
-                <FileSpreadsheet size={16} />
-                <span>Target Worksheet &amp; Suggestion</span>
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm d-flex align-items-center gap-2 px-3 py-2 fw-semibold ${
-                  activeTab === 'analytics' ? 'btn-primary' : 'btn-outline-secondary'
-                }`}
-                onClick={() => setActiveTab('analytics')}
-              >
-                <BarChart3 size={16} />
-                <span>Target vs. Actual Analytics</span>
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm d-flex align-items-center gap-2 px-3 py-2 fw-semibold ${
-                  activeTab === 'settings' ? 'btn-primary' : 'btn-outline-secondary'
-                }`}
-                onClick={() => setActiveTab('settings')}
-              >
-                <Settings size={16} />
-                <span>Calendar &amp; Category Defaults</span>
-              </button>
-            </div>
+    <div className="system-sales-workspace">
+      {/* Page Header & Side-by-Side View Mode Tabs (aligned with other modules) */}
+      <div className="menuitem-header-bar mb-3">
+        <div className="d-flex align-items-center gap-3 min-w-0">
+          <div className="bom-header-icon-badge d-flex align-items-center justify-content-center rounded-3 flex-shrink-0">
+            <Target size={20} />
           </div>
+          <div className="min-w-0">
+            <h2 className="h5 fw-bold mb-0 bom-main-heading">
+              Quarterly Sales Target &amp; Trend Analytics
+            </h2>
+            <p className="menuitem-subtitle mb-0">
+              Set quarterly store targets (Sales ₱ &amp; Category Qty PCS/BOXES), suggest from YoY/ADS trends, and track achievement.
+            </p>
+          </div>
+        </div>
+
+        {/* View Mode Tab Switcher */}
+        <div className="menuitem-tab-switcher flex-shrink-0" role="tablist" aria-label="Sales Target Views">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'worksheet'}
+            className={`menuitem-tab-btn ${activeTab === 'worksheet' ? 'active' : ''}`}
+            onClick={() => setActiveTab('worksheet')}
+          >
+            <FileSpreadsheet size={15} />
+            <span>Target Worksheet &amp; Suggestion</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'analytics'}
+            className={`menuitem-tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
+            onClick={() => setActiveTab('analytics')}
+          >
+            <BarChart3 size={15} />
+            <span>Target vs. Actual Analytics</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'settings'}
+            className={`menuitem-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            <Settings size={15} />
+            <span>Calendar &amp; Category Defaults</span>
+          </button>
         </div>
       </div>
 
@@ -1201,38 +1131,26 @@ export function SalesTargetReport() {
                     <RefreshCw size={14} />
                     <span>Reload Saved</span>
                   </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-primary d-flex align-items-center gap-2"
-                    disabled={batchGenerating}
-                    onClick={() => void handleBatchSuggestAndSaveAllStores()}
-                    title="Auto-suggest and save quarterly targets for all active stores in one click"
-                  >
-                    <Layers size={14} />
-                    <span>
-                      {batchGenerating
-                        ? 'Generating All Stores...'
-                        : `Batch Suggest & Save All Stores`}
-                    </span>
-                  </button>
                 </div>
 
                 <div className="d-flex flex-wrap align-items-center gap-2">
                   {worksheetTarget && (
                     <button
                       type="button"
-                      className="btn btn-sm btn-outline-success d-flex align-items-center gap-2"
+                      className="btn rof-export-btn rof-export-btn-excel btn-sm d-inline-flex align-items-center gap-2 px-3 fw-semibold"
+                      style={{ height: '34px', borderRadius: '8px' }}
                       onClick={() => exportWorksheetToExcel(worksheetTarget)}
+                      title="Download Styled Excel Target Worksheet (.xlsx)"
                     >
-                      <Download size={14} />
-                      <span>Export Excel Template (.xlsx)</span>
+                      <FileSpreadsheet size={15} />
+                      <span>Export Excel (.xlsx)</span>
                     </button>
                   )}
 
                   <button
                     type="button"
                     className="btn btn-sm btn-success d-flex align-items-center gap-2 fw-semibold px-3"
+                    style={{ height: '34px', borderRadius: '8px' }}
                     disabled={savingTarget || !worksheetTarget}
                     onClick={() => void handleSaveTarget()}
                   >
@@ -1919,7 +1837,9 @@ export function SalesTargetReport() {
                     <button
                       type="button"
                       className={`btn ${
-                        analyticsSalesMetric === 'net' ? 'btn-primary' : 'btn-outline-secondary'
+                        analyticsSalesMetric === 'net'
+                          ? 'menuitem-seg-btn-active'
+                          : 'menuitem-seg-btn'
                       }`}
                       onClick={() => setAnalyticsSalesMetric('net')}
                     >
@@ -1928,7 +1848,9 @@ export function SalesTargetReport() {
                     <button
                       type="button"
                       className={`btn ${
-                        analyticsSalesMetric === 'gross' ? 'btn-primary' : 'btn-outline-secondary'
+                        analyticsSalesMetric === 'gross'
+                          ? 'menuitem-seg-btn-active'
+                          : 'menuitem-seg-btn'
                       }`}
                       onClick={() => setAnalyticsSalesMetric('gross')}
                     >
@@ -1941,29 +1863,37 @@ export function SalesTargetReport() {
                   <button
                     type="button"
                     className="btn btn-sm btn-primary d-flex align-items-center gap-1 px-3"
+                    style={{ height: '34px', borderRadius: '8px' }}
                     disabled={analyticsLoading}
                     onClick={() => void fetchAnalytics()}
                   >
-                    <RefreshCw size={14} />
+                    <RefreshCw size={14} className={analyticsLoading ? 'spin' : ''} />
                     <span>{analyticsLoading ? 'Loading...' : 'Refresh'}</span>
                   </button>
 
                   <button
                     type="button"
-                    className="btn btn-sm btn-outline-success d-flex align-items-center gap-1"
+                    className="btn rof-export-btn rof-export-btn-excel btn-sm d-inline-flex align-items-center gap-1 px-3 fw-semibold"
+                    style={{ height: '34px', borderRadius: '8px' }}
                     disabled={filteredAnalyticsSummary.length === 0}
-                    onClick={() =>
+                    onClick={() => {
+                      const selectedMonthObj = getQuarterMonths(targetQuarter).find(
+                        (m) => m.month === analyticsMonthFilter
+                      );
                       exportAnalyticsToExcel({
                         targetYear,
                         targetQuarter,
                         locationName: analyticsStore || 'ALL',
+                        monthLabel: selectedMonthObj?.name,
+                        salesMetric: analyticsSalesMetric,
                         summary: filteredAnalyticsSummary,
                         weekdayWeekend: filteredAnalyticsWdWe,
                         categories: filteredAnalyticsCategories,
-                      })
-                    }
+                      });
+                    }}
+                    title="Download Styled Excel Analytics Workbook (.xlsx)"
                   >
-                    <Download size={14} />
+                    <FileSpreadsheet size={15} />
                     <span>Export .xlsx</span>
                   </button>
                 </div>
@@ -2067,28 +1997,8 @@ export function SalesTargetReport() {
                   Category Target vs. Actual Performance (Sales ₱ &amp; Quantity PCS/BOXES)
                 </h5>
                 <small className="text-secondary">
-                  Compares planned category targets against actual POS item sales mapped from dbo.dts_details
+                  Compares planned category targets against actual POS item sales from daily category summaries.
                 </small>
-              </div>
-              <div className="btn-group btn-group-sm">
-                <button
-                  type="button"
-                  className={`btn ${
-                    analyticsCategoryMode === 'sales' ? 'btn-primary' : 'btn-outline-secondary'
-                  }`}
-                  onClick={() => setAnalyticsCategoryMode('sales')}
-                >
-                  Category Sales (₱)
-                </button>
-                <button
-                  type="button"
-                  className={`btn ${
-                    analyticsCategoryMode === 'qty' ? 'btn-primary' : 'btn-outline-secondary'
-                  }`}
-                  onClick={() => setAnalyticsCategoryMode('qty')}
-                >
-                  Category Qty (PCS / BOXES)
-                </button>
               </div>
             </div>
 

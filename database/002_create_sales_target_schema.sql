@@ -29,7 +29,15 @@ BEGIN
 END
 GO
 
--- Seed Default Categories (matching the Excel Target Template)
+-- Clean up obsolete MERCHANDISE category references if tables already exist
+IF OBJECT_ID('dbo.tbl_sales_target_category_map', 'U') IS NOT NULL
+    DELETE FROM [dbo].[tbl_sales_target_category_map] WHERE [CategoryCode] = 'MERCHANDISE';
+IF OBJECT_ID('dbo.tbl_sales_target_category_mix', 'U') IS NOT NULL
+    DELETE FROM [dbo].[tbl_sales_target_category_mix] WHERE [CategoryCode] = 'MERCHANDISE';
+DELETE FROM [dbo].[tbl_sales_target_category] WHERE [CategoryCode] = 'MERCHANDISE';
+GO
+
+-- Seed / Upsert Default Categories (aligned with agg_daily_* tables in usp_RefreshDailySummaries)
 MERGE INTO [dbo].[tbl_sales_target_category] AS target
 USING (
     VALUES
@@ -38,10 +46,20 @@ USING (
         ('JPOPS',        'J.POPS',         'BOXES', 260.0000, 0.090000, 3, 1),
         ('BEVERAGE',     'BEVERAGE',       'PCS',   119.0000, 0.210000, 4, 1),
         ('JCOOL',        'J.COOL',         'PCS',   190.0000, 0.020000, 5, 1),
-        ('PASTRY_PASTA', 'PASTRY PASTA',   'PCS',   340.0000, 0.060000, 6, 1),
-        ('MERCHANDISE',  'MERCHANDISE',    'PCS',   340.0000, 0.000000, 7, 1)
+        ('PASTRY_PASTA', 'PASTRY PASTA',   'PCS',   150.0000, 0.060000, 6, 1),
+        ('FOOD',         'FOOD',           'PCS',   340.0000, 0.000000, 7, 1),
+        ('BREWBOX',      'BREWBOX',        'BOXES', 650.0000, 0.000000, 8, 1)
 ) AS source ([CategoryCode], [CategoryName], [QtyUOM], [DefaultUnitPrice], [DefaultMixPct], [SortOrder], [IsActive])
 ON target.[CategoryCode] = source.[CategoryCode]
+WHEN MATCHED THEN
+    UPDATE SET
+        [CategoryName] = source.[CategoryName],
+        [QtyUOM] = source.[QtyUOM],
+        [DefaultUnitPrice] = source.[DefaultUnitPrice],
+        [DefaultMixPct] = source.[DefaultMixPct],
+        [SortOrder] = source.[SortOrder],
+        [IsActive] = source.[IsActive],
+        [ModifiedDate] = GETDATE()
 WHEN NOT MATCHED THEN
     INSERT ([CategoryCode], [CategoryName], [QtyUOM], [DefaultUnitPrice], [DefaultMixPct], [SortOrder], [IsActive])
     VALUES (source.[CategoryCode], source.[CategoryName], source.[QtyUOM], source.[DefaultUnitPrice], source.[DefaultMixPct], source.[SortOrder], source.[IsActive]);
@@ -74,47 +92,60 @@ BEGIN
 END
 GO
 
--- Seed Default Category Mappings to dts_object / dts_details
+-- Seed Default Category Mappings (aligned with usp_RefreshDailySummaries)
 DELETE FROM [dbo].[tbl_sales_target_category_map];
 
 INSERT INTO [dbo].[tbl_sales_target_category_map] ([CategoryCode], [MatchType], [MatchValue], [Priority], [IsActive])
 VALUES
-    -- 1. J.POPS (inside Donut MajorGroup with FamilyGroup = 'JPops')
-    ('JPOPS',        'FAMILYGROUP',   '%POP%',          10, 1),
-    ('JPOPS',        'ITEMNAME_LIKE', '%J.POP%',        11, 1),
-    ('JPOPS',        'ITEMNAME_LIKE', '%JPOP%',         12, 1),
-    -- 2. J.CLUB (MajorGroup = 'JClub', FamilyGroup = 'J.Club' / 'Promo J.Club')
-    ('JCLUB',        'MAJORGROUP',    '%JCLUB%',        20, 1),
-    ('JCLUB',        'FAMILYGROUP',   '%CLUB%',         21, 1),
-    ('JCLUB',        'ITEMNAME_LIKE', '%J.CLUB%',       22, 1),
-    ('JCLUB',        'ITEMNAME_LIKE', '%JCLUB%',        23, 1),
-    -- 3. J.COOL (FamilyGroup = 'JCool' / 'Topping JCool' / 'JCool Promo')
-    ('JCOOL',        'FAMILYGROUP',   '%COOL%',         30, 1),
-    ('JCOOL',        'FAMILYGROUP',   '%YOGURT%',       31, 1),
-    ('JCOOL',        'MAJORGROUP',    '%COOL%',         32, 1),
-    ('JCOOL',        'ITEMNAME_LIKE', '%J.COOL%',       33, 1),
-    -- 4. PASTRY PASTA (MajorGroup = 'Pastries' / 'Food', FamilyGroup = 'Pasta', 'Pastries', 'Cookies', 'Pandesal', 'Turnover', 'FOOD Promo')
-    ('PASTRY_PASTA', 'MAJORGROUP',    '%PASTR%',        40, 1),
-    ('PASTRY_PASTA', 'FAMILYGROUP',   '%PASTR%',        41, 1),
-    ('PASTRY_PASTA', 'FAMILYGROUP',   '%PASTA%',        42, 1),
-    ('PASTRY_PASTA', 'FAMILYGROUP',   '%BAKERY%',       43, 1),
-    ('PASTRY_PASTA', 'FAMILYGROUP',   '%TURNOVER%',     44, 1),
-    ('PASTRY_PASTA', 'MAJORGROUP',    'Food',           45, 1),
-    ('PASTRY_PASTA', 'FAMILYGROUP',   'FOOD Promo',     46, 1),
-    -- 5. MERCHANDISE (MajorGroup = 'Merchandise', FamilyGroup = 'Hardware' / 'Merchandise')
-    ('MERCHANDISE',  'MAJORGROUP',    '%MERCH%',        50, 1),
-    ('MERCHANDISE',  'FAMILYGROUP',   '%MERCH%',        51, 1),
-    ('MERCHANDISE',  'FAMILYGROUP',   'Hardware',       52, 1),
-    -- 6. BEVERAGE (MajorGroup = 'Beverage' / 'Drip Coffee' / 'Brew Box', FamilyGroup = 'Beverage Promo' / 'Topping Bev.')
-    ('BEVERAGE',     'MAJORGROUP',    '%BEVERAGE%',     60, 1),
-    ('BEVERAGE',     'MAJORGROUP',    '%COFFEE%',       61, 1),
-    ('BEVERAGE',     'MAJORGROUP',    '%BREW BOX%',     62, 1),
-    ('BEVERAGE',     'MAJORGROUP',    '%DRINK%',        63, 1),
-    ('BEVERAGE',     'FAMILYGROUP',   '%BEV%',          64, 1),
-    ('BEVERAGE',     'FAMILYGROUP',   '%COFFEE%',       65, 1),
-    -- 7. DONUT (MajorGroup = 'Donut', FamilyGroup = 'Donut' / 'Premium Donut' / 'Free Donut' / 'Donut Promo')
-    ('DONUT',        'MAJORGROUP',    '%DONUT%',        70, 1),
-    ('DONUT',        'FAMILYGROUP',   '%DONUT%',        71, 1);
+    -- 1. J.POPS (agg_daily_jpops: FamilyGroup = 'JPops' for qty/24; itemnumber IN (5113004, 5113003, 5113012, 5113013) for sales)
+    ('JPOPS',        'ITEMNUMBER',    '5113004',        10, 1),
+    ('JPOPS',        'ITEMNUMBER',    '5113003',        11, 1),
+    ('JPOPS',        'ITEMNUMBER',    '5113012',        12, 1),
+    ('JPOPS',        'ITEMNUMBER',    '5113013',        13, 1),
+    ('JPOPS',        'FAMILYGROUP',   'JPops',          14, 1),
+    -- 2. J.CLUB (agg_daily_jclub: FamilyGroup = 'J.Club', itemnumber IN (5141004, 5141002, 5141003, 5141005, 5141008, 9720047))
+    ('JCLUB',        'ITEMNUMBER',    '5141004',        20, 1),
+    ('JCLUB',        'ITEMNUMBER',    '5141002',        21, 1),
+    ('JCLUB',        'ITEMNUMBER',    '5141003',        22, 1),
+    ('JCLUB',        'ITEMNUMBER',    '5141005',        23, 1),
+    ('JCLUB',        'ITEMNUMBER',    '5141008',        24, 1),
+    ('JCLUB',        'ITEMNUMBER',    '9720047',        25, 1),
+    ('JCLUB',        'FAMILYGROUP',   'J.Club',         26, 1),
+    -- 3. J.COOL (agg_daily_jcool: itemnumber IN (5131001..5135001), FamilyGroup IN ('Topping JCool', 'JCool Promo'))
+    ('JCOOL',        'ITEMNUMBER',    '5131001',        30, 1),
+    ('JCOOL',        'ITEMNUMBER',    '5132001',        31, 1),
+    ('JCOOL',        'ITEMNUMBER',    '5133001',        32, 1),
+    ('JCOOL',        'ITEMNUMBER',    '5134001',        33, 1),
+    ('JCOOL',        'ITEMNUMBER',    '5135001',        34, 1),
+    ('JCOOL',        'FAMILYGROUP',   'JCool Promo',    35, 1),
+    ('JCOOL',        'FAMILYGROUP',   'Topping JCool',  36, 1),
+    -- 4. PASTRY PASTA (agg_daily_pastries: MajorGroup = 'Pastries' — Pandesal, Turnover, Cookies, Croissant, Pasta)
+    ('PASTRY_PASTA', 'MAJORGROUP',    'Pastries',       40, 1),
+    ('PASTRY_PASTA', 'FAMILYGROUP',   'Pasta',          41, 1),
+    ('PASTRY_PASTA', 'FAMILYGROUP',   'Pandesal',       42, 1),
+    ('PASTRY_PASTA', 'FAMILYGROUP',   'Turnover',       43, 1),
+    ('PASTRY_PASTA', 'FAMILYGROUP',   'Cookies',        44, 1),
+    -- 5. FOOD (agg_daily_food: MajorGroup = 'Food' — All Day B-Fast, Mains, Mains - Pasta, Salad, Sides, Soup, Add-Ons, FOOD Promo)
+    ('FOOD',         'MAJORGROUP',    'Food',           50, 1),
+    ('FOOD',         'FAMILYGROUP',   'FOOD Promo',     51, 1),
+    -- 6. BREWBOX (agg_daily_brewbox: MajorGroup = 'Brew Box', FamilyGroup = 'Brew Box AddOns', itemnumber IN (5221219, 5221220, 5221221, 5221225))
+    ('BREWBOX',      'MAJORGROUP',    'Brew Box',       60, 1),
+    ('BREWBOX',      'FAMILYGROUP',   'Brew Box AddOns',61, 1),
+    ('BREWBOX',      'ITEMNUMBER',    '5221219',        62, 1),
+    ('BREWBOX',      'ITEMNUMBER',    '5221220',        63, 1),
+    ('BREWBOX',      'ITEMNUMBER',    '5221221',        64, 1),
+    ('BREWBOX',      'ITEMNUMBER',    '5221225',        65, 1),
+    -- 7. BEVERAGE (agg_daily_beverage: MajorGroup = 'Beverage', FamilyGroup IN ('Topping Bev.', 'Promo Drink', 'Beverage Promo'))
+    ('BEVERAGE',     'MAJORGROUP',    'Beverage',       70, 1),
+    ('BEVERAGE',     'FAMILYGROUP',   'Promo Drink',    71, 1),
+    ('BEVERAGE',     'FAMILYGROUP',   'Beverage Promo', 72, 1),
+    ('BEVERAGE',     'FAMILYGROUP',   'Topping Bev.',   73, 1),
+    -- 8. DONUT (agg_daily_donut: MajorGroup = 'Donut', FamilyGroup = 'Premium Donut', 'Donut Promo', 'Promotion', plus Donut Combo Boxes)
+    ('DONUT',        'MAJORGROUP',    'Donut',          80, 1),
+    ('DONUT',        'FAMILYGROUP',   'Premium Donut',  81, 1),
+    ('DONUT',        'FAMILYGROUP',   'Donut Promo',    82, 1),
+    ('DONUT',        'FAMILYGROUP',   'Promotion',      83, 1),
+    ('DONUT',        'FAMILYGROUP',   'Package',        84, 1);
 GO
 
 /* =========================================================================

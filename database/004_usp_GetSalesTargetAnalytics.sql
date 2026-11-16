@@ -358,66 +358,155 @@ BEGIN
 
     /* =====================================================================
        STEP 4: Category Target vs. Actual (Sales & Qty)
-       First aggregate dts_details for Current Quarter by Store, Month,
-       IsWeekendOrHd, and ITEMNUMBER before mapping to categories.
+       Reads directly from the pre-aggregated agg_daily_* tables populated by
+       dbo.usp_RefreshDailySummaries:
+       - NetSales = ROUND((vat_amt / 1.12) + (vatex_amt / 1.12), 2)
+       - GrossSales = total_* (vat_amt + vatex_amt)
+       - JPOPS Qty = total_jpops_qty / 24.0 (BOXES)
+       - BEVERAGE Qty = total_bev_qty + bev_promo_qty (PCS)
+       - JCOOL Qty = jcoolS + jcoolC + jcoolSH + jcoolT + jcoolTG + jcoolpromo (PCS)
+       - PASTRY_PASTA Qty = Total_pastries_qty (PCS)
+       - FOOD Qty = total_food_qty (PCS)
+       - BREWBOX Qty = brewbox_qty + brew1dzn_qty + brewjpops2dzn_qty + brewcombo_qty (BOXES)
        ===================================================================== */
-    SELECT
-        d.locationname AS LocationName,
-        MONTH(d.businessdate) AS TargetMonth,
-        ISNULL(cal.IsWeekendOrHd, 0) AS IsWeekendOrHd,
-        d.ITEMNUMBER,
-        MAX(d.ITEMNAME) AS ITEMNAME,
-        MAX(d.MAJORGROUPNAME) AS MajorGroupName,
-        MAX(d.FAMILYGROUPNAME) AS FamilyGroupName,
-        SUM(ISNULL(d.netsales, 0)) AS NetSales,
-        SUM(ISNULL(d.LINETOTAL, 0)) AS GrossSales,
-        SUM(ISNULL(d.LINECOUNT, 0)) AS QtySold
-    INTO #CYItemSummary
-    FROM [dbo].[dts_details] d
-    INNER JOIN #ScopeStores s
-        ON s.LocationName = d.locationname
-    LEFT JOIN #AnalyticsCalendar cal
-        ON cal.CalDate = d.businessdate
-    WHERE d.businessdate BETWEEN @TargetStartDate AND @TargetEndDate
-      AND d.TRANSACTIONTYPE = 'Item Sale'
-      AND d.ITEMNUMBER NOT IN (9801, 9802, 9803)
-    GROUP BY
-        d.locationname,
-        MONTH(d.businessdate),
-        ISNULL(cal.IsWeekendOrHd, 0),
-        d.ITEMNUMBER;
+    ;WITH DailyCYCatUnion AS (
+        -- 1. DONUT
+        SELECT
+            d.locationname AS LocationName,
+            d.businessdate AS BusinessDate,
+            'DONUT' AS CategoryCode,
+            ROUND((ISNULL(d.Donut_vat, 0) / 1.12) + (ISNULL(d.Donut_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.Total_donut, 0) AS GrossSales,
+            CAST(ISNULL(d.total_donut_qty, 0) AS DECIMAL(18, 4)) AS QtySold
+        FROM [dbo].[agg_daily_donut] d
+        INNER JOIN #ScopeStores s ON s.LocationName = d.locationname
+        WHERE d.businessdate BETWEEN @TargetStartDate AND @TargetEndDate
 
+        UNION ALL
+
+        -- 2. JCLUB
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'JCLUB' AS CategoryCode,
+            ROUND((ISNULL(d.jclub_vat, 0) / 1.12) + (ISNULL(d.jclub_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.total_jclub, 0) AS GrossSales,
+            CAST(ISNULL(d.total_jclub_qty, 0) AS DECIMAL(18, 4)) AS QtySold
+        FROM [dbo].[agg_daily_jclub] d
+        INNER JOIN #ScopeStores s ON s.LocationName = d.locationname
+        WHERE d.businessdate BETWEEN @TargetStartDate AND @TargetEndDate
+
+        UNION ALL
+
+        -- 3. JPOPS (total_jpops_qty / 24.0 -> BOXES)
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'JPOPS' AS CategoryCode,
+            ROUND((ISNULL(d.jpops_vat, 0) / 1.12) + (ISNULL(d.jpops_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.total_jpops, 0) AS GrossSales,
+            CAST(ISNULL(d.total_jpops_qty, 0) / 24.0 AS DECIMAL(18, 4)) AS QtySold
+        FROM [dbo].[agg_daily_jpops] d
+        INNER JOIN #ScopeStores s ON s.LocationName = d.locationname
+        WHERE d.businessdate BETWEEN @TargetStartDate AND @TargetEndDate
+
+        UNION ALL
+
+        -- 4. BEVERAGE (total_bev_qty + bev_promo_qty)
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'BEVERAGE' AS CategoryCode,
+            ROUND((ISNULL(d.bev_vat, 0) / 1.12) + (ISNULL(d.bev_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.total_bev_amt, 0) AS GrossSales,
+            CAST(ISNULL(d.total_bev_qty, 0) + ISNULL(d.bev_promo_qty, 0) AS DECIMAL(18, 4)) AS QtySold
+        FROM [dbo].[agg_daily_beverage] d
+        INNER JOIN #ScopeStores s ON s.LocationName = d.locationname
+        WHERE d.businessdate BETWEEN @TargetStartDate AND @TargetEndDate
+
+        UNION ALL
+
+        -- 5. JCOOL (cups + promo, excluding toppings)
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'JCOOL' AS CategoryCode,
+            ROUND((ISNULL(d.jcool_vat, 0) / 1.12) + (ISNULL(d.jcool_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.total_jcool, 0) AS GrossSales,
+            CAST(
+                ISNULL(d.jcoolS_qty, 0) + ISNULL(d.jcoolC_qty, 0) + ISNULL(d.jcoolSH_qty, 0)
+              + ISNULL(d.jcoolT_qty, 0) + ISNULL(d.jcoolTG_qty, 0) + ISNULL(d.jcoolpromo_qty, 0)
+              AS DECIMAL(18, 4)
+            ) AS QtySold
+        FROM [dbo].[agg_daily_jcool] d
+        INNER JOIN #ScopeStores s ON s.LocationName = d.locationname
+        WHERE d.businessdate BETWEEN @TargetStartDate AND @TargetEndDate
+
+        UNION ALL
+
+        -- 6. PASTRY_PASTA (agg_daily_pastries)
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'PASTRY_PASTA' AS CategoryCode,
+            ROUND((ISNULL(d.pastries_vat, 0) / 1.12) + (ISNULL(d.pastries_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.Total_pastries, 0) AS GrossSales,
+            CAST(ISNULL(d.Total_pastries_qty, 0) AS DECIMAL(18, 4)) AS QtySold
+        FROM [dbo].[agg_daily_pastries] d
+        INNER JOIN #ScopeStores s ON s.LocationName = d.locationname
+        WHERE d.businessdate BETWEEN @TargetStartDate AND @TargetEndDate
+
+        UNION ALL
+
+        -- 7. FOOD (agg_daily_food)
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'FOOD' AS CategoryCode,
+            ROUND((ISNULL(d.Food_vat, 0) / 1.12) + (ISNULL(d.Food_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.Total_food_amt, 0) AS GrossSales,
+            CAST(ISNULL(d.total_food_qty, 0) AS DECIMAL(18, 4)) AS QtySold
+        FROM [dbo].[agg_daily_food] d
+        INNER JOIN #ScopeStores s ON s.LocationName = d.locationname
+        WHERE d.businessdate BETWEEN @TargetStartDate AND @TargetEndDate
+
+        UNION ALL
+
+        -- 8. BREWBOX (agg_daily_brewbox)
+        SELECT
+            d.locationname,
+            d.businessdate,
+            'BREWBOX' AS CategoryCode,
+            ROUND((ISNULL(d.Brewbox_vat, 0) / 1.12) + (ISNULL(d.Brewbox_vatex, 0) / 1.12), 2) AS NetSales,
+            ISNULL(d.total_brewbox, 0) AS GrossSales,
+            CAST(
+                ISNULL(d.brewbox_qty, 0) + ISNULL(d.brew1dzn_qty, 0)
+              + ISNULL(d.brewjpops2dzn_qty, 0) + ISNULL(d.brewcombo_qty, 0)
+              AS DECIMAL(18, 4)
+            ) AS QtySold
+        FROM [dbo].[agg_daily_brewbox] d
+        INNER JOIN #ScopeStores s ON s.LocationName = d.locationname
+        WHERE d.businessdate BETWEEN @TargetStartDate AND @TargetEndDate
+    )
     SELECT
-        cis.LocationName,
-        cis.TargetMonth,
-        ISNULL(mapped.CategoryCode, 'DONUT') AS CategoryCode,
-        SUM(CASE WHEN cis.IsWeekendOrHd = 0 THEN cis.NetSales ELSE 0 END) AS ActualWeekdayCategorySales,
-        SUM(CASE WHEN cis.IsWeekendOrHd = 1 THEN cis.NetSales ELSE 0 END) AS ActualWeekendHdCategorySales,
-        SUM(cis.NetSales) AS ActualCategoryNetSales,
-        SUM(cis.GrossSales) AS ActualCategoryGrossSales,
-        SUM(CASE WHEN cis.IsWeekendOrHd = 0 THEN cis.QtySold ELSE 0 END) AS ActualWeekdayCategoryQty,
-        SUM(CASE WHEN cis.IsWeekendOrHd = 1 THEN cis.QtySold ELSE 0 END) AS ActualWeekendHdCategoryQty,
-        SUM(cis.QtySold) AS ActualCategoryQty
+        u.LocationName,
+        MONTH(u.BusinessDate) AS TargetMonth,
+        u.CategoryCode,
+        SUM(CASE WHEN ISNULL(cal.IsWeekendOrHd, 0) = 0 THEN u.NetSales ELSE 0 END) AS ActualWeekdayCategorySales,
+        SUM(CASE WHEN ISNULL(cal.IsWeekendOrHd, 0) = 1 THEN u.NetSales ELSE 0 END) AS ActualWeekendHdCategorySales,
+        SUM(u.NetSales) AS ActualCategoryNetSales,
+        SUM(u.GrossSales) AS ActualCategoryGrossSales,
+        SUM(CASE WHEN ISNULL(cal.IsWeekendOrHd, 0) = 0 THEN u.QtySold ELSE 0 END) AS ActualWeekdayCategoryQty,
+        SUM(CASE WHEN ISNULL(cal.IsWeekendOrHd, 0) = 1 THEN u.QtySold ELSE 0 END) AS ActualWeekendHdCategoryQty,
+        SUM(u.QtySold) AS ActualCategoryQty
     INTO #CYCategoryActuals
-    FROM #CYItemSummary cis
-    LEFT JOIN [dbo].[dts_object] obj
-        ON cis.ITEMNUMBER = obj.itemnumber
-    OUTER APPLY (
-        SELECT TOP 1 mp.CategoryCode
-        FROM [dbo].[tbl_sales_target_category_map] mp
-        WHERE mp.IsActive = 1
-          AND (
-              (mp.MatchType = 'FAMILYGROUP'   AND ISNULL(cis.FamilyGroupName, ISNULL(obj.familygroup, '')) LIKE mp.MatchValue)
-           OR (mp.MatchType = 'MAJORGROUP'    AND ISNULL(cis.MajorGroupName, ISNULL(obj.majorgroup, ''))   LIKE mp.MatchValue)
-           OR (mp.MatchType = 'ITEMNAME_LIKE' AND ISNULL(cis.ITEMNAME, ISNULL(obj.itemname, ''))           LIKE mp.MatchValue)
-           OR (mp.MatchType = 'ITEMNUMBER'    AND CAST(cis.ITEMNUMBER AS VARCHAR(50)) = mp.MatchValue)
-          )
-        ORDER BY mp.Priority ASC, mp.MapID ASC
-    ) mapped
+    FROM DailyCYCatUnion u
+    LEFT JOIN #AnalyticsCalendar cal
+        ON cal.CalDate = u.BusinessDate
     GROUP BY
-        cis.LocationName,
-        cis.TargetMonth,
-        ISNULL(mapped.CategoryCode, 'DONUT');
+        u.LocationName,
+        MONTH(u.BusinessDate),
+        u.CategoryCode;
 
     /* =====================================================================
        RESULT SET 3: Category Target vs. Actual (Sales PHP & Qty PCS/BOXES)
@@ -488,7 +577,6 @@ BEGIN
 
     -- Cleanup temp tables
     DROP TABLE IF EXISTS #CYCategoryActuals;
-    DROP TABLE IF EXISTS #CYItemSummary;
     DROP TABLE IF EXISTS #LYMonthlyActuals;
     DROP TABLE IF EXISTS #CYMonthlyActuals;
     DROP TABLE IF EXISTS #ScopeStores;
