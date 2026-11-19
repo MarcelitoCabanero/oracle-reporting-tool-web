@@ -446,42 +446,42 @@ export function RofReport() {
 
   return (
     <div className="system-sales-workspace">
-      {/* Workspace Header */}
-      <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
-        <div className="d-flex align-items-center gap-3">
-          <div className="bom-header-icon-badge d-flex align-items-center justify-content-center rounded-3 shadow-sm flex-shrink-0">
-            <ReceiptText size={22} />
+      {/* Workspace Header & Side-by-Side View Mode Tabs */}
+      <div className="menuitem-header-bar mb-3">
+        <div className="d-flex align-items-center gap-3 min-w-0">
+          <div className="bom-header-icon-badge d-flex align-items-center justify-content-center rounded-3 flex-shrink-0">
+            <ReceiptText size={20} />
           </div>
-          <div>
+          <div className="min-w-0">
             <h2 className="h5 fw-bold mb-0 bom-main-heading">Remittance of Funds (ROF)</h2>
-            <p className="small text-secondary mb-0">
+            <p className="menuitem-subtitle mb-0">
               Monitor consolidated daily sales remittances, cash/non-cash breakdowns, and cashier variances per store.
             </p>
           </div>
         </div>
 
         {/* View Mode Tabs */}
-        <div className="d-flex align-items-center gap-2">
+        <div className="menuitem-tab-switcher flex-shrink-0" role="tablist" aria-label="Remittance of Funds Views">
           <button
             type="button"
-            className={`system-sales-navigation-item btn border ${
-              activeTab === 'summary' ? 'system-sales-navigation-item-active shadow-sm' : ''
-            }`}
+            role="tab"
+            aria-selected={activeTab === 'summary'}
+            className={`menuitem-tab-btn ${activeTab === 'summary' ? 'active' : ''}`}
             onClick={() => setActiveTab('summary')}
           >
-            <BarChart3 size={16} className="me-2" />
-            <strong>Summary ROF</strong>
+            <BarChart3 size={15} />
+            <span>Summary ROF</span>
           </button>
 
           <button
             type="button"
-            className={`system-sales-navigation-item btn border ${
-              activeTab === 'details' ? 'system-sales-navigation-item-active shadow-sm' : ''
-            }`}
+            role="tab"
+            aria-selected={activeTab === 'details'}
+            className={`menuitem-tab-btn ${activeTab === 'details' ? 'active' : ''}`}
             onClick={() => setActiveTab('details')}
           >
-            <CalendarDays size={16} className="me-2" />
-            <strong>Details ROF</strong>
+            <CalendarDays size={15} />
+            <span>Details ROF</span>
           </button>
         </div>
       </div>
