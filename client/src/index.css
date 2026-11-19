@@ -8013,3 +8013,1132 @@ html[data-theme='dark'] .promo-inline-share-track {
 html[data-theme='dark'] .promo-inline-share-fill {
   background: linear-gradient(90deg, #94A3B8 0%, #64748B 100%);
 }
+
+/* ============================================================================
+   DEPOSIT MONITORING: APPROVAL NOTIFICATIONS, SIDEBAR BADGE, TABLE STATUS &
+   MONITORING THREAD / BACKTRACKING MODAL
+   ============================================================================ */
+
+/* 1. Sidebar Navigation Pending Badge */
+.sidebar-nav-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background-color: #DC2626;
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.3);
+}
+
+.sidebar-nav-badge-collapsed {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background-color: #DC2626;
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  border: 1.5px solid #FFFFFF;
+}
+
+html[data-theme='dark'] .sidebar-nav-badge-collapsed {
+  border-color: #0F172A;
+}
+
+/* 2. Top Header Notification Bell Badge & Popover */
+.header-notification.active {
+  background-color: #F1F5F9;
+  color: #0F172A;
+}
+
+.depo-header-bell-badge {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background-color: #64748B;
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  border: 2px solid #FFFFFF;
+  font-variant-numeric: tabular-nums;
+}
+
+.depo-header-bell-badge.has-unseen {
+  background-color: #DC2626;
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.35);
+}
+
+.depo-notif-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 440px;
+  max-width: calc(100vw - 24px);
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  z-index: 1080;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: rofFadeIn 0.15s ease-out;
+}
+
+.depo-notif-header {
+  padding: 14px 16px 10px;
+  background-color: #F8FAFC;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.depo-notif-header-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background-color: #FEF2F2;
+  color: #DC2626;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.depo-notif-subtitle {
+  font-size: 11px;
+  color: #64748B;
+  margin-top: 1px;
+}
+
+.depo-notif-action-btn {
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #CBD5E1;
+  background-color: #FFFFFF;
+  color: #334155;
+}
+
+.depo-notif-action-btn:hover:not(:disabled) {
+  background-color: #F1F5F9;
+  color: #0F172A;
+}
+
+.depo-notif-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.depo-notif-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #475569;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.depo-notif-tab:hover {
+  background-color: #E2E8F0;
+  color: #0F172A;
+}
+
+.depo-notif-tab.active {
+  background-color: #1E293B;
+  color: #FFFFFF;
+}
+
+.depo-notif-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background-color: rgba(100, 116, 139, 0.16);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.depo-notif-tab.active .depo-notif-tab-count {
+  background-color: rgba(255, 255, 255, 0.22);
+  color: #FFFFFF;
+}
+
+.depo-notif-body {
+  max-height: 430px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.depo-notif-empty {
+  padding: 36px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.depo-notif-item {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #F1F5F9;
+  background-color: #FFFFFF;
+  padding: 12px 15px;
+  text-align: left;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  cursor: pointer;
+  transition: background-color 0.14s ease;
+}
+
+.depo-notif-item:last-child {
+  border-bottom: 0;
+}
+
+.depo-notif-item:hover {
+  background-color: #F8FAFC;
+}
+
+.depo-notif-item.is-unseen {
+  background-color: #FFFBEB;
+}
+
+.depo-notif-item.is-delete.is-unseen {
+  background-color: #FEF2F2;
+}
+
+.depo-notif-item.is-unseen:hover {
+  background-color: #FEF3C7;
+}
+
+.depo-notif-item.is-delete.is-unseen:hover {
+  background-color: #FEE2E2;
+}
+
+.depo-notif-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.depo-notif-item-icon.is-approval {
+  background-color: #FEF3C7;
+  color: #B45309;
+}
+
+.depo-notif-item-icon.is-delete {
+  background-color: #FEE2E2;
+  color: #B91C1C;
+}
+
+.depo-notif-item-icon.is-update {
+  background-color: #E0F2FE;
+  color: #0369A1;
+}
+
+.depo-notif-item-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.depo-notif-unseen-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #DC2626;
+  flex-shrink: 0;
+}
+
+.depo-notif-store-tag {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.depo-notif-type-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.depo-notif-type-badge.is-approval {
+  background-color: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+}
+
+.depo-notif-type-badge.is-delete {
+  background-color: #FEE2E2;
+  color: #991B1B;
+  border: 1px solid #FECACA;
+}
+
+.depo-notif-type-badge.is-replenish {
+  background-color: #DCFCE7;
+  color: #166534;
+  border: 1px solid #BBF7D0;
+}
+
+.depo-notif-type-badge.is-update {
+  background-color: #E0F2FE;
+  color: #075985;
+  border: 1px solid #BAE6FD;
+}
+
+.depo-notif-time {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748B;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.depo-notif-main-line {
+  font-size: 12px;
+  color: #334155;
+  margin-bottom: 5px;
+}
+
+.depo-notif-deduction-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.depo-notif-deduction-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  background-color: #F1F5F9;
+  color: #334155;
+  border: 1px solid #E2E8F0;
+}
+
+.depo-notif-deduction-chip.is-petty {
+  background-color: #FFFBEB;
+  color: #92400E;
+  border-color: #FDE68A;
+}
+
+.depo-notif-deduction-chip.is-opensales {
+  background-color: #EFF6FF;
+  color: #1E40AF;
+  border-color: #BFDBFE;
+}
+
+.depo-notif-deduction-chip.is-deptexp {
+  background-color: #F5F3FF;
+  color: #5B21B6;
+  border-color: #DDD6FE;
+}
+
+.depo-notif-reason-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background-color: rgba(254, 226, 226, 0.55);
+  border: 1px solid #FECACA;
+  color: #991B1B;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.depo-notif-message-preview {
+  font-size: 11.5px;
+  color: #475569;
+  background-color: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  padding: 5px 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.depo-notif-meta-footer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: #64748B;
+}
+
+/* 3. Deposit Monitoring Quick Filters & Table Badges */
+.depo-actionable-banner-btn {
+  background-color: #FEF2F2;
+  border: 1px solid #FCA5A5;
+  color: #B91C1C;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: 10px;
+  transition: all 0.15s ease;
+}
+
+.depo-actionable-banner-btn:hover:not(:disabled) {
+  background-color: #DC2626;
+  border-color: #DC2626;
+  color: #FFFFFF;
+}
+
+.depo-quick-filter-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 2px 8px;
+}
+
+.depo-quick-filter-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748B;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.depo-quick-filter-select {
+  border: 0 !important;
+  background-color: transparent !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #1E293B !important;
+  padding: 2px 22px 2px 4px !important;
+  box-shadow: none !important;
+  width: auto !important;
+  cursor: pointer;
+}
+
+.depo-quick-filter-select.is-active {
+  color: #B91C1C !important;
+}
+
+.depo-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.depo-status-badge.is-not-required {
+  background-color: #F1F5F9;
+  color: #64748B;
+  border: 1px solid #E2E8F0;
+}
+
+.depo-status-badge.is-pending {
+  background-color: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FCD34D;
+}
+
+.depo-status-badge.is-approved {
+  background-color: #DCFCE7;
+  color: #166534;
+  border: 1px solid #86EFAC;
+}
+
+.depo-status-badge.is-rejected {
+  background-color: #FEE2E2;
+  color: #991B1B;
+  border: 1px solid #FCA5A5;
+}
+
+.depo-delete-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.depo-delete-badge.is-pending-delete {
+  background-color: #DC2626;
+  color: #FFFFFF;
+  border: 1px solid #B91C1C;
+}
+
+.depo-delete-badge.is-delete-approved {
+  background-color: #7F1D1D;
+  color: #FEE2E2;
+  border: 1px solid #991B1B;
+}
+
+.depo-delete-badge.is-delete-rejected {
+  background-color: #F1F5F9;
+  color: #64748B;
+  border: 1px solid #CBD5E1;
+}
+
+.depo-sub-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.depo-sub-badge.is-unreplenished {
+  background-color: #FEF3C7;
+  color: #B45309;
+  border: 1px solid #FDE68A;
+}
+
+.depo-sub-badge.is-replenished {
+  background-color: #DCFCE7;
+  color: #15803D;
+  border: 1px solid #BBF7D0;
+}
+
+.depo-sub-badge.is-opensales {
+  background-color: #EFF6FF;
+  color: #1D4ED8;
+  border: 1px solid #BFDBFE;
+}
+
+.depo-sub-badge.is-na {
+  background-color: #F1F5F9;
+  color: #64748B;
+  border: 1px solid #E2E8F0;
+}
+
+.depo-sub-meta {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #5B21B6;
+  background-color: #F5F3FF;
+  border: 1px solid #DDD6FE;
+  border-radius: 5px;
+  padding: 1px 6px;
+  display: inline-block;
+  max-width: 150px;
+}
+
+.depo-thread-btn {
+  background-color: #F8FAFC;
+  border: 1px solid #CBD5E1;
+  color: #1E293B;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 7px;
+  transition: all 0.15s ease;
+}
+
+.depo-thread-btn:hover {
+  background-color: #E2E8F0;
+  border-color: #94A3B8;
+  color: #0F172A;
+}
+
+.depo-thread-btn.needs-action {
+  background-color: #FFFBEB;
+  border-color: #F59E0B;
+  color: #92400E;
+}
+
+.depo-thread-btn.needs-action:hover {
+  background-color: #FEF3C7;
+  border-color: #D97706;
+}
+
+.depo-thread-count-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background-color: #E2E8F0;
+  color: #1E293B;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.depo-thread-btn.needs-action .depo-thread-count-pill {
+  background-color: #F59E0B;
+  color: #FFFFFF;
+}
+
+.depo-row-pending-delete td {
+  background-color: rgba(254, 242, 242, 0.55);
+}
+
+.depo-row-pending-approval td {
+  background-color: rgba(255, 251, 235, 0.45);
+}
+
+/* 4. Monitoring Thread & Backtracking Modal */
+.depo-thread-modal-card {
+  width: 100%;
+  max-width: 1120px;
+  max-height: 92vh;
+  background-color: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: rofFadeIn 0.18s ease-out;
+}
+
+.depo-thread-modal-body {
+  padding: 18px 24px;
+  background-color: #F8FAFC;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.depo-thread-modal-footer {
+  padding: 14px 24px 16px;
+  background-color: #FFFFFF;
+  border-top: 1px solid #E2E8F0;
+  flex-shrink: 0;
+}
+
+.depo-summary-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.depo-summary-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.depo-summary-card-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.depo-summary-card-amount {
+  font-size: 19px;
+  font-weight: 800;
+  color: #0F172A;
+  font-variant-numeric: tabular-nums;
+}
+
+.depo-summary-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: #475569;
+  margin-top: 2px;
+}
+
+.depo-summary-card-sub {
+  font-size: 11.5px;
+  color: #475569;
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+/* Delete Request Banner inside Thread Modal */
+.depo-delete-request-banner {
+  border-radius: 12px;
+  padding: 14px 16px;
+  border: 1px solid #FCA5A5;
+  background-color: #FEF2F2;
+  color: #7F1D1D;
+}
+
+.depo-delete-request-banner.is-approved {
+  background-color: #FFF1F2;
+  border-color: #F43F5E;
+}
+
+.depo-delete-request-banner.is-rejected {
+  background-color: #F8FAFC;
+  border-color: #CBD5E1;
+  color: #334155;
+}
+
+.depo-delete-banner-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background-color: #FEE2E2;
+  color: #DC2626;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.depo-delete-banner-reason {
+  font-size: 12.5px;
+  background-color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(252, 165, 165, 0.7);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+/* Area Manager Deduction Approval Panel */
+.depo-approval-panel {
+  background-color: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-left: 4px solid var(--brand-orange, #FF6B1A);
+  border-radius: 12px;
+  padding: 12px 16px;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+}
+
+/* Unlinked Supporting Attachments Card */
+.depo-unlinked-attachments-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+
+/* Timeline Section */
+.depo-timeline-section {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.depo-timeline-empty {
+  padding: 32px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.depo-timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.depo-timeline-item {
+  border: 1px solid #E2E8F0;
+  border-left: 3.5px solid #94A3B8;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background-color: #FAFBFC;
+}
+
+.depo-timeline-item.is-approver {
+  border-left-color: #2563EB;
+  background-color: #F8FAFC;
+}
+
+.depo-timeline-item.is-store {
+  border-left-color: #D97706;
+}
+
+.depo-timeline-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.depo-timeline-timestamp {
+  font-size: 11px;
+  color: #64748B;
+  font-variant-numeric: tabular-nums;
+}
+
+.depo-timeline-message {
+  font-size: 13px;
+  color: #1E293B;
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.depo-timeline-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.depo-role-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.depo-role-pill.is-approver {
+  background-color: #DBEAFE;
+  color: #1E40AF;
+}
+
+.depo-role-pill.is-store {
+  background-color: #FEF3C7;
+  color: #92400E;
+}
+
+/* Thread Category Badges */
+.depo-cat-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.depo-cat-badge.is-petty {
+  background-color: #FEF3C7;
+  color: #92400E;
+}
+
+.depo-cat-badge.is-replenish {
+  background-color: #DCFCE7;
+  color: #166534;
+}
+
+.depo-cat-badge.is-opensales {
+  background-color: #DBEAFE;
+  color: #1E40AF;
+}
+
+.depo-cat-badge.is-deptexp {
+  background-color: #EDE9FE;
+  color: #5B21B6;
+}
+
+.depo-cat-badge.is-approval {
+  background-color: #E0F2FE;
+  color: #075985;
+}
+
+.depo-cat-badge.is-delete {
+  background-color: #FEE2E2;
+  color: #991B1B;
+}
+
+.depo-cat-badge.is-general {
+  background-color: #F1F5F9;
+  color: #334155;
+}
+
+/* Clickable FTP Supporting Attachment Chip */
+.depo-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1px solid #CBD5E1;
+  background-color: #FFFFFF;
+  color: #1E293B;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.depo-attachment-chip:hover {
+  background-color: #F1F5F9;
+  border-color: #64748B;
+  color: #0F172A;
+}
+
+.depo-attachment-chip-name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Staged Upload Pill in Post Remark Footer */
+.depo-staged-upload-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background-color: #F1F5F9;
+  border: 1px solid #CBD5E1;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.depo-staged-upload-remove {
+  border: 0;
+  background: transparent;
+  color: #64748B;
+  padding: 0 2px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.depo-staged-upload-remove:hover {
+  color: #DC2626;
+}
+
+/* Ensure FTP Attachment Viewer renders above the Thread Modal */
+.depo-attachment-overlay {
+  z-index: 1120 !important;
+}
+
+/* ============================================================================
+   DARK THEME OVERRIDES FOR DEPOSIT NOTIFICATIONS & THREAD MODAL
+   ============================================================================ */
+html[data-theme='dark'] .header-notification.active {
+  background-color: #1E293B;
+  color: #F8FAFC;
+}
+
+html[data-theme='dark'] .depo-header-bell-badge {
+  border-color: #0F172A;
+}
+
+html[data-theme='dark'] .depo-notif-popover {
+  background-color: #1E293B;
+  border-color: #334155;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+}
+
+html[data-theme='dark'] .depo-notif-header {
+  background-color: #0F172A;
+  border-bottom-color: #334155;
+}
+
+html[data-theme='dark'] .depo-notif-action-btn {
+  background-color: #1E293B;
+  border-color: #475569;
+  color: #E2E8F0;
+}
+
+html[data-theme='dark'] .depo-notif-action-btn:hover:not(:disabled) {
+  background-color: #334155;
+  color: #FFFFFF;
+}
+
+html[data-theme='dark'] .depo-notif-tab {
+  color: #94A3B8;
+}
+
+html[data-theme='dark'] .depo-notif-tab:hover {
+  background-color: #1E293B;
+  color: #F8FAFC;
+}
+
+html[data-theme='dark'] .depo-notif-tab.active {
+  background-color: #334155;
+  color: #FFFFFF;
+}
+
+html[data-theme='dark'] .depo-notif-item {
+  background-color: #1E293B;
+  border-bottom-color: #334155;
+}
+
+html[data-theme='dark'] .depo-notif-item:hover {
+  background-color: #263548;
+}
+
+html[data-theme='dark'] .depo-notif-item.is-unseen {
+  background-color: rgba(245, 158, 11, 0.1);
+}
+
+html[data-theme='dark'] .depo-notif-item.is-delete.is-unseen {
+  background-color: rgba(220, 38, 38, 0.14);
+}
+
+html[data-theme='dark'] .depo-notif-store-tag {
+  color: #F8FAFC;
+}
+
+html[data-theme='dark'] .depo-notif-main-line {
+  color: #CBD5E1;
+}
+
+html[data-theme='dark'] .depo-notif-message-preview {
+  background-color: #0F172A;
+  border-color: #334155;
+  color: #CBD5E1;
+}
+
+html[data-theme='dark'] .depo-quick-filter-group {
+  background-color: #0F172A;
+  border-color: #334155;
+}
+
+html[data-theme='dark'] .depo-quick-filter-select {
+  color: #E2E8F0 !important;
+}
+
+html[data-theme='dark'] .depo-quick-filter-select.is-active {
+  color: #F87171 !important;
+}
+
+html[data-theme='dark'] .depo-thread-btn {
+  background-color: #0F172A;
+  border-color: #334155;
+  color: #E2E8F0;
+}
+
+html[data-theme='dark'] .depo-thread-btn:hover {
+  background-color: #1E293B;
+  border-color: #64748B;
+  color: #FFFFFF;
+}
+
+html[data-theme='dark'] .depo-thread-count-pill {
+  background-color: #334155;
+  color: #F8FAFC;
+}
+
+html[data-theme='dark'] .depo-thread-modal-card {
+  background-color: #1E293B;
+  border-color: #334155;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+}
+
+html[data-theme='dark'] .depo-thread-modal-body {
+  background-color: #0F172A;
+}
+
+html[data-theme='dark'] .depo-thread-modal-footer {
+  background-color: #1E293B;
+  border-top-color: #334155;
+}
+
+html[data-theme='dark'] .depo-summary-card,
+html[data-theme='dark'] .depo-approval-panel,
+html[data-theme='dark'] .depo-unlinked-attachments-card,
+html[data-theme='dark'] .depo-timeline-section {
+  background-color: #1E293B;
+  border-color: #334155;
+}
+
+html[data-theme='dark'] .depo-summary-card-amount {
+  color: #F8FAFC;
+}
+
+html[data-theme='dark'] .depo-summary-card-meta,
+html[data-theme='dark'] .depo-summary-card-sub {
+  color: #94A3B8;
+}
+
+html[data-theme='dark'] .depo-delete-request-banner {
+  background-color: rgba(127, 29, 29, 0.35);
+  border-color: #DC2626;
+  color: #FECACA;
+}
+
+html[data-theme='dark'] .depo-delete-banner-reason {
+  background-color: rgba(15, 23, 42, 0.65);
+  border-color: rgba(220, 38, 38, 0.5);
+  color: #FEE2E2;
+}
+
+html[data-theme='dark'] .depo-timeline-item {
+  background-color: #0F172A;
+  border-color: #334155;
+}
+
+html[data-theme='dark'] .depo-timeline-message {
+  color: #E2E8F0;
+}
+
+html[data-theme='dark'] .depo-attachment-chip {
+  background-color: #1E293B;
+  border-color: #475569;
+  color: #E2E8F0;
+}
+
+html[data-theme='dark'] .depo-attachment-chip:hover {
+  background-color: #334155;
+  border-color: #94A3B8;
+  color: #FFFFFF;
+}
+
+html[data-theme='dark'] .depo-staged-upload-pill {
+  background-color: #0F172A;
+  border-color: #334155;
+  color: #CBD5E1;
+}
+

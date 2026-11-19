@@ -5,7 +5,7 @@ export interface AuthUser {
   locationId: number;
   locationName: string;
   username: string;
-  access: 'Area Manager' | 'Executive';
+  access: 'Area Manager' | 'Executive' | 'admin';
 }
 
 interface TokenPayload extends AuthUser {

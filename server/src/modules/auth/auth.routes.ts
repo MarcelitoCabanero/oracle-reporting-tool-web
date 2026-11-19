@@ -38,11 +38,12 @@ authRouter.post('/login', async (req, res) => {
     }
 
     const accessRole = (row.access || '').trim();
+    const isAdminRole = accessRole.toLowerCase() === 'admin';
 
-    // Check role eligibility: Only Area Manager and Executive are permitted
-    if (accessRole !== 'Area Manager' && accessRole !== 'Executive') {
+    // Check role eligibility: Area Manager, Executive, and admin are permitted
+    if (accessRole !== 'Area Manager' && accessRole !== 'Executive' && !isAdminRole) {
       res.status(403).json({
-        error: `Access denied. Role "${accessRole}" is not permitted to access this reporting dashboard. Only Area Managers and Executives have access.`,
+        error: `Access denied. Role "${accessRole}" is not permitted to access this reporting dashboard. Only Area Managers, Executives, and Admins have access.`,
       });
       return;
     }
@@ -51,7 +52,7 @@ authRouter.post('/login', async (req, res) => {
       locationId: row.LOCATIONID,
       locationName: row.LOCATIONNAME,
       username: row.username,
-      access: accessRole as 'Area Manager' | 'Executive',
+      access: (isAdminRole ? 'admin' : accessRole) as AuthUser['access'],
     };
 
     const token = createToken(authUser);

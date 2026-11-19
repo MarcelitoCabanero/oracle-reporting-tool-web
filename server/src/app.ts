@@ -29,7 +29,7 @@ app.use(
         : env.clientOrigin,
   })
 );
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '15mb' }));
 
 app.get('/api', (_request, response) => {
   response.json({ name: 'Oracle Reporting Tool API', version: '0.1.0' });

@@ -19,6 +19,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import logo from '../../assets/jco-logo.png';
+import { useDepositNotifications } from '../../features/deposit/DepositNotificationContext';
 
 export type Page =
   | 'dashboard'
@@ -52,6 +53,7 @@ interface NavItemProps {
   activePage: Page;
   collapsed: boolean;
   disabled?: boolean;
+  badgeCount?: number;
   onNavigate: (page: Page) => void;
 }
 
@@ -62,22 +64,57 @@ interface SidebarSectionProps {
   children: ReactNode;
 }
 
-function NavItem({ label, page, icon, activePage, collapsed, disabled, onNavigate }: NavItemProps) {
+function NavItem({
+  label,
+  page,
+  icon,
+  activePage,
+  collapsed,
+  disabled,
+  badgeCount = 0,
+  onNavigate,
+}: NavItemProps) {
   const active = activePage === page;
+  const showBadge = badgeCount > 0;
+  const badgeText = badgeCount > 99 ? '99+' : String(badgeCount);
 
   return (
     <button
       type="button"
-      className={`sidebar-nav-item btn border-0 w-100 d-flex align-items-center gap-3 text-start rounded-3 px-3 py-2 ${
+      className={`sidebar-nav-item btn border-0 w-100 d-flex align-items-center gap-3 text-start rounded-3 px-3 py-2 position-relative ${
         active ? 'active' : ''
       } ${disabled ? 'opacity-50' : ''}`}
       onClick={() => !disabled && onNavigate(page)}
       disabled={disabled}
-      title={collapsed ? label : undefined}
+      title={
+        collapsed
+          ? showBadge
+            ? `${label} (${badgeCount} pending approvals)`
+            : label
+          : undefined
+      }
       aria-label={collapsed ? label : undefined}
     >
-      <span className="d-flex align-items-center sidebar-nav-icon">{icon}</span>
+      <span className="d-flex align-items-center sidebar-nav-icon position-relative">
+        {icon}
+        {collapsed && showBadge && (
+          <span
+            className="sidebar-nav-badge-collapsed"
+            aria-label={`${badgeCount} pending approvals`}
+          >
+            {badgeText}
+          </span>
+        )}
+      </span>
       <span className="sidebar-item-label flex-grow-1">{label}</span>
+      {!collapsed && showBadge && (
+        <span
+          className="sidebar-nav-badge-pill"
+          title={`${badgeCount} pending deposit approval(s)`}
+        >
+          {badgeText}
+        </span>
+      )}
     </button>
   );
 }
@@ -104,8 +141,18 @@ function SidebarSection({ title, collapsed, defaultOpen = true, children }: Side
   );
 }
 
-export function Sidebar({ activePage, collapsed, onToggleCollapse, theme, onThemeChange, onNavigate, onLogout }: SidebarProps) {
+export function Sidebar({
+  activePage,
+  collapsed,
+  onToggleCollapse,
+  theme,
+  onThemeChange,
+  onNavigate,
+  onLogout,
+}: SidebarProps) {
   const isDark = theme === 'dark';
+  const { canViewApprovalNotifications, counts } = useDepositNotifications();
+  const depositPendingBadge = canViewApprovalNotifications ? counts.totalActionable : 0;
 
   return (
     <aside className={`app-sidebar bg-white border-end d-flex flex-column flex-shrink-0 ${collapsed ? 'collapsed' : ''}`}>
@@ -145,7 +192,15 @@ export function Sidebar({ activePage, collapsed, onToggleCollapse, theme, onThem
 
         <SidebarSection title="FINANCE" collapsed={collapsed}>
           <NavItem label="ROF" page="rof" icon={<ReceiptText size={18} />} activePage={activePage} collapsed={collapsed} onNavigate={onNavigate} />
-          <NavItem label="Deposit Monitoring" page="deposit" icon={<WalletCards size={18} />} activePage={activePage} collapsed={collapsed} onNavigate={onNavigate} />
+          <NavItem
+            label="Deposit Monitoring"
+            page="deposit"
+            icon={<WalletCards size={18} />}
+            activePage={activePage}
+            collapsed={collapsed}
+            badgeCount={depositPendingBadge}
+            onNavigate={onNavigate}
+          />
         </SidebarSection>
       </nav>
 

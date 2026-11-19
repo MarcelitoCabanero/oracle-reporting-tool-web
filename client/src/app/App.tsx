@@ -5,6 +5,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { BomReport } from '../features/bom/BomReport';
 import { RofReport } from '../features/rof/RofReport';
 import { DepositMonitoring } from '../features/deposit/DepositMonitoring';
+import { DepositNotificationProvider } from '../features/deposit/DepositNotificationContext';
 import { MenuItemReport } from '../features/menuitem/MenuItemReport';
 import { SystemSalesSummary } from '../features/systemsales/SystemSalesSummary';
 import { PromotionsReport } from '../features/promotions/PromotionsReport';
@@ -137,66 +138,68 @@ export function App() {
   }
 
   return (
-    <AppLayout
-      activePage={activePage}
-      onNavigate={handleNavigate}
-      theme={theme}
-      onThemeChange={changeTheme}
-    >
-      {/* Keep active report modules mounted once visited so switching pages preserves state & scroll position */}
-      {(visitedPages.dashboard || activePage === 'dashboard') && (
-        <div style={{ display: activePage === 'dashboard' ? 'block' : 'none' }}>
-          <DashboardPage onNavigate={handleNavigate} />
-        </div>
-      )}
+    <DepositNotificationProvider onNavigateToDeposit={() => handleNavigate('deposit')}>
+      <AppLayout
+        activePage={activePage}
+        onNavigate={handleNavigate}
+        theme={theme}
+        onThemeChange={changeTheme}
+      >
+        {/* Keep active report modules mounted once visited so switching pages preserves state & scroll position */}
+        {(visitedPages.dashboard || activePage === 'dashboard') && (
+          <div style={{ display: activePage === 'dashboard' ? 'block' : 'none' }}>
+            <DashboardPage onNavigate={handleNavigate} />
+          </div>
+        )}
 
-      {(visitedPages.bom || activePage === 'bom') && (
-        <div style={{ display: activePage === 'bom' ? 'block' : 'none' }}>
-          <BomReport />
-        </div>
-      )}
+        {(visitedPages.bom || activePage === 'bom') && (
+          <div style={{ display: activePage === 'bom' ? 'block' : 'none' }}>
+            <BomReport />
+          </div>
+        )}
 
-      {(visitedPages.rof || activePage === 'rof') && (
-        <div style={{ display: activePage === 'rof' ? 'block' : 'none' }}>
-          <RofReport />
-        </div>
-      )}
+        {(visitedPages.rof || activePage === 'rof') && (
+          <div style={{ display: activePage === 'rof' ? 'block' : 'none' }}>
+            <RofReport />
+          </div>
+        )}
 
-      {(visitedPages.deposit || activePage === 'deposit') && (
-        <div style={{ display: activePage === 'deposit' ? 'block' : 'none' }}>
-          <DepositMonitoring />
-        </div>
-      )}
+        {(visitedPages.deposit || activePage === 'deposit') && (
+          <div style={{ display: activePage === 'deposit' ? 'block' : 'none' }}>
+            <DepositMonitoring />
+          </div>
+        )}
 
-      {(visitedPages['menu-item'] || activePage === 'menu-item') && (
-        <div style={{ display: activePage === 'menu-item' ? 'block' : 'none' }}>
-          <MenuItemReport />
-        </div>
-      )}
+        {(visitedPages['menu-item'] || activePage === 'menu-item') && (
+          <div style={{ display: activePage === 'menu-item' ? 'block' : 'none' }}>
+            <MenuItemReport />
+          </div>
+        )}
 
-      {(visitedPages['system-sales'] || activePage === 'system-sales') && (
-        <div style={{ display: activePage === 'system-sales' ? 'block' : 'none' }}>
-          <SystemSalesSummary />
-        </div>
-      )}
+        {(visitedPages['system-sales'] || activePage === 'system-sales') && (
+          <div style={{ display: activePage === 'system-sales' ? 'block' : 'none' }}>
+            <SystemSalesSummary />
+          </div>
+        )}
 
-      {(visitedPages.promotions || activePage === 'promotions') && (
-        <div style={{ display: activePage === 'promotions' ? 'block' : 'none' }}>
-          <PromotionsReport />
-        </div>
-      )}
+        {(visitedPages.promotions || activePage === 'promotions') && (
+          <div style={{ display: activePage === 'promotions' ? 'block' : 'none' }}>
+            <PromotionsReport />
+          </div>
+        )}
 
-      {(visitedPages['sales-target'] || activePage === 'sales-target') && (
-        <div style={{ display: activePage === 'sales-target' ? 'block' : 'none' }}>
-          <SalesTargetReport />
-        </div>
-      )}
+        {(visitedPages['sales-target'] || activePage === 'sales-target') && (
+          <div style={{ display: activePage === 'sales-target' ? 'block' : 'none' }}>
+            <SalesTargetReport />
+          </div>
+        )}
 
-      {renderPlaceholderPage()}
+        {renderPlaceholderPage()}
 
-      {/* Inactivity Session Timeout Warning Modal */}
-      <SessionTimeoutModal />
-    </AppLayout>
+        {/* Inactivity Session Timeout Warning Modal */}
+        <SessionTimeoutModal />
+      </AppLayout>
+    </DepositNotificationProvider>
   );
 }
 
