@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { getPool, sql } from '../../database/db.js';
 import { requireAuth, type AuthenticatedRequest } from '../auth/auth.middleware.js';
+import { allowedStoresSql, enforceStoreScope, getScopedStores, isAllToken, isStoreAllowed } from '../auth/storeScope.js';
 
 export const salesTargetRouter = Router();
 
 // Protect all Sales Target endpoints with requireAuth
 salesTargetRouter.use(requireAuth);
+salesTargetRouter.use(enforceStoreScope);
 
 function formatDateOnly(value: unknown): string | null {
   if (!value) return null;
@@ -64,17 +66,10 @@ interface StoreQuarterTargetInput {
  * GET /api/reports/sales-target/stores
  * Returns all active physical store locations (IsActive = 1 AND access = 'Store')
  */
-salesTargetRouter.get('/stores', async (_req, res) => {
+salesTargetRouter.get('/stores', async (req: AuthenticatedRequest, res) => {
   try {
-    const pool = await getPool();
-    const result = await pool.request().query(`
-      SELECT DISTINCT LOCATIONID, LOCATIONNAME, ORGLOCATIONREF
-      FROM dbo.dts_location
-      WHERE IsActive = 1 AND access = 'Store'
-      ORDER BY LOCATIONNAME ASC
-    `);
-
-    res.json({ stores: result.recordset });
+    const stores = await getScopedStores(req.user!);
+    res.json({ stores });
   } catch (error) {
     console.error('Error fetching active stores for Sales Target:', error);
     res.status(500).json({ error: 'Failed to retrieve store locations from database.' });
@@ -325,7 +320,7 @@ salesTargetRouter.post('/calendar/holidays', async (req, res) => {
  * Executes dbo.usp_SuggestSalesTarget to suggest quarterly targets based on
  * Last Year Same Quarter (YoY trend) and Basis Month ADS, plus Category Mix %.
  */
-salesTargetRouter.post('/suggest', async (req, res) => {
+salesTargetRouter.post('/suggest', async (req: AuthenticatedRequest, res) => {
   const {
     targetYear,
     targetQuarter,
@@ -350,17 +345,29 @@ salesTargetRouter.post('/suggest', async (req, res) => {
 
   try {
     const pool = await getPool();
-    const request = pool
-      .request()
-      .input('TargetYear', sql.Int, yearNum)
-      .input('TargetQuarter', sql.TinyInt, qtrNum)
-      .input('LocationName', sql.VarChar(50), locationName ? String(locationName).trim() : 'ALL')
-      .input('BasisMonthDate', sql.Date, basisMonthDate || null)
-      .input('YoYGrowthPct', sql.Decimal(9, 6), Number(yoyGrowthPct ?? 0.05))
-      .input('AvgPerCheck', sql.Decimal(18, 4), Number(avgPerCheck ?? 470.0));
+    const storeParam = locationName ? String(locationName).trim() : 'ALL';
+    const scopedStores = req.allowedStoreNames;
+    // Scoped users (Area Manager) asking for ALL: run per assigned store and merge.
+    const runNames: string[] = scopedStores && isAllToken(storeParam) ? scopedStores : [storeParam];
 
-    const result = await request.execute('dbo.usp_SuggestSalesTarget');
-    const recordsets = result.recordsets as sql.IRecordSet<Record<string, unknown>>[];
+    const merged: Record<string, unknown>[][] = [[], [], []];
+    for (const name of runNames) {
+      const result = await pool
+        .request()
+        .input('TargetYear', sql.Int, yearNum)
+        .input('TargetQuarter', sql.TinyInt, qtrNum)
+        .input('LocationName', sql.VarChar(50), name)
+        .input('BasisMonthDate', sql.Date, basisMonthDate || null)
+        .input('YoYGrowthPct', sql.Decimal(9, 6), Number(yoyGrowthPct ?? 0.05))
+        .input('AvgPerCheck', sql.Decimal(18, 4), Number(avgPerCheck ?? 470.0))
+        .execute('dbo.usp_SuggestSalesTarget');
+      const sets = result.recordsets as unknown as Record<string, unknown>[][];
+      // Recordset 0 is the shared calendar; only take it once.
+      if (merged[0]!.length === 0) merged[0]!.push(...(sets[0] ?? []));
+      merged[1]!.push(...(sets[1] ?? []));
+      merged[2]!.push(...(sets[2] ?? []));
+    }
+    const recordsets = merged;
 
     const calendarBreakdown = recordsets[0] ?? [];
     const monthlySuggestions = (recordsets[1] ?? []).map((row) => ({
@@ -388,7 +395,7 @@ salesTargetRouter.post('/suggest', async (req, res) => {
  * GET /api/reports/sales-target
  * Retrieves saved Quarterly Sales Targets from dbo.vw_sales_target_detailed
  */
-salesTargetRouter.get('/', async (req, res) => {
+salesTargetRouter.get('/', async (req: AuthenticatedRequest, res) => {
   const yearNum = Number(req.query.year) || new Date().getFullYear();
   const qtrNum = Number(req.query.quarter) || 1;
   const locationName = req.query.locationName ? String(req.query.locationName).trim() : null;
@@ -411,12 +418,15 @@ salesTargetRouter.get('/', async (req, res) => {
       locationFilter = 'AND LocationName = @LocationName';
     }
 
+    const scopeSql = allowedStoresSql(request, req.allowedStoreNames, 'LocationName');
+
     const result = await request.query(`
       SELECT *
       FROM dbo.vw_sales_target_detailed
       WHERE TargetYear = @TargetYear
         AND TargetQuarter = @TargetQuarter
         ${locationFilter}
+        ${scopeSql}
       ORDER BY LocationName ASC, TargetMonth ASC, CategorySortOrder ASC
     `);
 
@@ -536,6 +546,16 @@ salesTargetRouter.post('/', async (req: AuthenticatedRequest, res) => {
   }
 
   const createdBy = req.user?.username ?? 'system';
+
+  if (req.allowedStoreNames) {
+    const denied = rawTargets.find(
+      (t) => !isStoreAllowed(req.allowedStoreNames, String(t.locationName ?? '')),
+    );
+    if (denied) {
+      res.status(403).json({ error: 'You do not have access to this store.' });
+      return;
+    }
+  }
 
   try {
     const pool = await getPool();
@@ -740,7 +760,7 @@ salesTargetRouter.post('/', async (req: AuthenticatedRequest, res) => {
  * Executes dbo.usp_GetSalesTargetAnalytics to compare Target vs. Actual
  * (Sales PHP & Qty PCS/BOXES, Weekday vs. Weekend/HD, Customer Count, and YoY growth).
  */
-salesTargetRouter.post('/analytics', async (req, res) => {
+salesTargetRouter.post('/analytics', async (req: AuthenticatedRequest, res) => {
   const { targetYear, targetQuarter, locationName = 'ALL' } = req.body ?? {};
 
   const yearNum = Number(targetYear);
@@ -758,14 +778,25 @@ salesTargetRouter.post('/analytics', async (req, res) => {
 
   try {
     const pool = await getPool();
-    const result = await pool
-      .request()
-      .input('TargetYear', sql.Int, yearNum)
-      .input('TargetQuarter', sql.TinyInt, qtrNum)
-      .input('LocationName', sql.VarChar(50), locationName ? String(locationName).trim() : 'ALL')
-      .execute('dbo.usp_GetSalesTargetAnalytics');
+    const storeParam = locationName ? String(locationName).trim() : 'ALL';
+    const scopedStores = req.allowedStoreNames;
+    // Scoped users (Area Manager) asking for ALL: run per assigned store and merge.
+    const runNames: string[] = scopedStores && isAllToken(storeParam) ? scopedStores : [storeParam];
 
-    const recordsets = result.recordsets as sql.IRecordSet<Record<string, unknown>>[];
+    const merged: Record<string, unknown>[][] = [[], [], []];
+    for (const name of runNames) {
+      const result = await pool
+        .request()
+        .input('TargetYear', sql.Int, yearNum)
+        .input('TargetQuarter', sql.TinyInt, qtrNum)
+        .input('LocationName', sql.VarChar(50), name)
+        .execute('dbo.usp_GetSalesTargetAnalytics');
+      const sets = result.recordsets as unknown as Record<string, unknown>[][];
+      for (let i = 0; i < 3; i++) {
+        merged[i]!.push(...(sets[i] ?? []));
+      }
+    }
+    const recordsets = merged;
 
     res.json({
       targetYear: yearNum,

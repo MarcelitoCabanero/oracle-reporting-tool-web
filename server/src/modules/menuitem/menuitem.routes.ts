@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { getPool, sql } from '../../database/db.js';
-import { requireAuth } from '../auth/auth.middleware.js';
+import { requireAuth, type AuthenticatedRequest } from '../auth/auth.middleware.js';
+import { enforceStoreScope, getScopedStores } from '../auth/storeScope.js';
 
 export const menuItemRouter = Router();
 
 // Protect all Menu Item endpoints with requireAuth
 menuItemRouter.use(requireAuth);
+menuItemRouter.use(enforceStoreScope);
 
 function formatDateOnly(value: unknown): string {
   if (value instanceof Date) {
@@ -83,17 +85,10 @@ async function resolveDtsDetailsGroupColumns(pool: sql.ConnectionPool): Promise<
  * GET /api/reports/menu-item/stores
  * Returns all active physical store locations (IsActive = 1 AND access = 'Store')
  */
-menuItemRouter.get('/stores', async (_req, res) => {
+menuItemRouter.get('/stores', async (req: AuthenticatedRequest, res) => {
   try {
-    const pool = await getPool();
-    const result = await pool.request().query(`
-      SELECT DISTINCT LOCATIONID, LOCATIONNAME, ORGLOCATIONREF
-      FROM dbo.dts_location
-      WHERE IsActive = 1 AND access = 'Store'
-      ORDER BY LOCATIONNAME ASC
-    `);
-
-    res.json({ stores: result.recordset });
+    const stores = await getScopedStores(req.user!);
+    res.json({ stores });
   } catch (error) {
     console.error('Error fetching active stores for Menu Item:', error);
     res.status(500).json({ error: 'Failed to retrieve store locations from database.' });

@@ -216,7 +216,7 @@ export function StoreSearchSelect({
         spellCheck={false}
         className={`${inputClassName} store-search-input`}
         value={displayValue}
-        placeholder={effectiveStores.length === 0 ? 'Loading active stores...' : placeholder}
+        placeholder={effectiveStores.length === 0 ? 'Loading stores... (no stores assigned to your account if this persists)' : placeholder}
         disabled={disabled || effectiveStores.length === 0}
         onFocus={(e) => {
           e.target.select();

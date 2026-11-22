@@ -1,27 +1,22 @@
 import { Router } from 'express';
 import { getPool, sql } from '../../database/db.js';
-import { requireAuth } from '../auth/auth.middleware.js';
+import { requireAuth, type AuthenticatedRequest } from '../auth/auth.middleware.js';
+import { enforceStoreScope, getScopedStores } from '../auth/storeScope.js';
 
 export const bomRouter = Router();
 
 // Protect all BOM & metadata endpoints with requireAuth
 bomRouter.use(requireAuth);
+bomRouter.use(enforceStoreScope);
 
 /**
  * GET /api/reports/bom/stores
  * Returns all active stores/locations for the filter dropdown
  */
-bomRouter.get('/stores', async (_req, res) => {
+bomRouter.get('/stores', async (req: AuthenticatedRequest, res) => {
   try {
-    const pool = await getPool();
-    const result = await pool.request().query(`
-      SELECT DISTINCT LOCATIONID, LOCATIONNAME, ORGLOCATIONREF
-      FROM dbo.dts_location
-      WHERE IsActive = 1 AND access = 'Store'
-      ORDER BY LOCATIONNAME ASC
-    `);
-
-    res.json({ stores: result.recordset });
+    const stores = await getScopedStores(req.user!);
+    res.json({ stores });
   } catch (error) {
     console.error('Error fetching active stores:', error);
     res.status(500).json({ error: 'Failed to retrieve store locations from database.' });

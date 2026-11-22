@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { getPool, sql } from '../../database/db.js';
-import { requireAuth } from '../auth/auth.middleware.js';
+import { requireAuth, type AuthenticatedRequest } from '../auth/auth.middleware.js';
+import { allowedStoresSql, enforceStoreScope, getScopedStores } from '../auth/storeScope.js';
 
 export const promotionsRouter = Router();
 
 // Protect all Promotions endpoints with requireAuth
 promotionsRouter.use(requireAuth);
+promotionsRouter.use(enforceStoreScope);
 
 function formatDateOnly(value: unknown): string {
   if (value instanceof Date) {
@@ -155,17 +157,10 @@ async function resolveDtsObjectMeta(pool: sql.ConnectionPool): Promise<DtsObject
  * GET /api/reports/promotions/stores
  * Returns all active physical store locations (IsActive = 1 AND access = 'Store')
  */
-promotionsRouter.get('/stores', async (_req, res) => {
+promotionsRouter.get('/stores', async (req: AuthenticatedRequest, res) => {
   try {
-    const pool = await getPool();
-    const result = await pool.request().query(`
-      SELECT DISTINCT LOCATIONID, LOCATIONNAME, ORGLOCATIONREF
-      FROM dbo.dts_location
-      WHERE IsActive = 1 AND access = 'Store'
-      ORDER BY LOCATIONNAME ASC
-    `);
-
-    res.json({ stores: result.recordset });
+    const stores = await getScopedStores(req.user!);
+    res.json({ stores });
   } catch (error) {
     console.error('Error fetching active stores for Promotions:', error);
     res.status(500).json({ error: 'Failed to retrieve store locations from database.' });
@@ -220,7 +215,7 @@ promotionsRouter.get('/catalog', async (_req, res) => {
  * Supports single store or ALL stores ('ALL'), optional promo itemNumber/itemName filter from dts_object,
  * and business date range.
  */
-promotionsRouter.post('/summary', async (req, res) => {
+promotionsRouter.post('/summary', async (req: AuthenticatedRequest, res) => {
   const { locationName, dateFrom, dateTo, itemNumber, promoName } = req.body ?? {};
 
   if (!locationName || typeof locationName !== 'string' || !locationName.trim()) {
@@ -271,7 +266,7 @@ promotionsRouter.post('/summary', async (req, res) => {
       ? `SUM(ISNULL(d.netsales, d.linetotal))`
       : `SUM(d.linetotal)`;
 
-    const locationWhereClause = isAllStores ? '' : 'AND d.locationname = @locationName';
+    let locationWhereClause = isAllStores ? '' : 'AND d.locationname = @locationName';
     const promoFilterClause = trimmedItemNumber
       ? 'AND CAST(d.Itemnumber AS VARCHAR(50)) = @itemNumber'
       : trimmedPromoName
@@ -293,6 +288,11 @@ promotionsRouter.post('/summary', async (req, res) => {
       .input('dateTo', sql.Date, dateTo)
       .input('itemNumber', sql.VarChar(50), trimmedItemNumber)
       .input('promoName', sql.VarChar(255), trimmedPromoName);
+
+    if (isAllStores) {
+      locationWhereClause = allowedStoresSql(summaryReq, req.allowedStoreNames, 'd.locationname');
+      allowedStoresSql(trendReq, req.allowedStoreNames, 'd.locationname');
+    }
 
     const [summaryRes, trendRes] = await Promise.all([
       summaryReq.query(`
@@ -408,7 +408,7 @@ promotionsRouter.post('/summary', async (req, res) => {
  * Drill-down into guest checks / receipts where a specific promotion item was sold.
  * Returns Target Promotion, Bundled (zero-price component), and Co-Sold items on those receipts.
  */
-promotionsRouter.post('/check-details', async (req, res) => {
+promotionsRouter.post('/check-details', async (req: AuthenticatedRequest, res) => {
   const { locationName, itemNumber, itemName, dateFrom, dateTo } = req.body ?? {};
 
   if (!itemNumber || String(itemNumber).trim() === '') {
@@ -440,7 +440,7 @@ promotionsRouter.post('/check-details', async (req, res) => {
       : '';
 
     const checkKeyCol = meta.hasGuestCheckId ? 'GUESTCHECKID' : 'FCRINVNUM';
-    const locationFilterPromo = isAllStores ? '' : 'AND p.locationname = @locationName';
+    let locationFilterPromo = isAllStores ? '' : 'AND p.locationname = @locationName';
 
     const pairedReq = pool
       .request()
@@ -448,6 +448,9 @@ promotionsRouter.post('/check-details', async (req, res) => {
       .input('itemNumber', sql.VarChar(50), trimmedItemNumber)
       .input('dateFrom', sql.Date, dateFrom)
       .input('dateTo', sql.Date, dateTo);
+    if (isAllStores) {
+      locationFilterPromo = allowedStoresSql(pairedReq, req.allowedStoreNames, 'p.locationname');
+    }
 
     // Paired, Bundled, and Co-Sold items across ALL checks that contained this promotion item
     const pairedQuery = `

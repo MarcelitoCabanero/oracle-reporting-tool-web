@@ -178,7 +178,7 @@ export function Sidebar({
       <nav className="sidebar-nav-current flex-grow-1 overflow-auto py-3 px-2">
         <SidebarSection title="DASHBOARD" collapsed={collapsed}>
           <NavItem label="Dashboard" page="dashboard" icon={<LayoutDashboard size={18} />} activePage={activePage} collapsed={collapsed} onNavigate={onNavigate} />
-          <NavItem label="Finance Insight" page="finance-insight" icon={<BarChart3 size={18} />} activePage={activePage} collapsed={collapsed} onNavigate={onNavigate} disabled />
+          <NavItem label="Finance Insight" page="finance-insight" icon={<BarChart3 size={18} />} activePage={activePage} collapsed={collapsed} onNavigate={onNavigate} />
         </SidebarSection>
 
         <SidebarSection title="REPORTS" collapsed={collapsed}>

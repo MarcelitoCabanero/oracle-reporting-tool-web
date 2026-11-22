@@ -894,10 +894,10 @@ export function SalesTargetReport() {
   };
 
   return (
-    <div className="system-sales-workspace">
-      {/* Page Header & Side-by-Side View Mode Tabs (aligned with other modules) */}
-      <div className="menuitem-header-bar mb-3">
-        <div className="d-flex align-items-center gap-3 min-w-0">
+    <div className="system-sales-workspace salestarget-workspace">
+      {/* Page Header & Side-by-Side View Mode Tabs (auto-scales cleanly at 125% DPI) */}
+      <div className="salestarget-header-bar mb-3">
+        <div className="d-flex align-items-center gap-3 salestarget-header-title-wrap">
           <div className="bom-header-icon-badge d-flex align-items-center justify-content-center rounded-3 flex-shrink-0">
             <Target size={20} />
           </div>
@@ -906,7 +906,7 @@ export function SalesTargetReport() {
               Quarterly Sales Target &amp; Trend Analytics
             </h2>
             <p className="menuitem-subtitle mb-0">
-              Set quarterly store targets (Sales ₱ &amp; Category Qty PCS/BOXES), suggest from YoY/ADS trends, and track achievement.
+              Set quarterly store targets (Sales ₱ &amp; Category Qty), suggest from YoY/ADS trends, and track achievement.
             </p>
           </div>
         </div>
@@ -921,7 +921,7 @@ export function SalesTargetReport() {
             onClick={() => setActiveTab('worksheet')}
           >
             <FileSpreadsheet size={15} />
-            <span>Target Worksheet &amp; Suggestion</span>
+            <span>Target Worksheet</span>
           </button>
           <button
             type="button"
@@ -931,7 +931,7 @@ export function SalesTargetReport() {
             onClick={() => setActiveTab('analytics')}
           >
             <BarChart3 size={15} />
-            <span>Target vs. Actual Analytics</span>
+            <span>Target vs. Actual</span>
           </button>
           <button
             type="button"
@@ -941,12 +941,12 @@ export function SalesTargetReport() {
             onClick={() => setActiveTab('settings')}
           >
             <Settings size={15} />
-            <span>Calendar &amp; Category Defaults</span>
+            <span>Calendar &amp; Defaults</span>
           </button>
         </div>
       </div>
 
-      {statusBanner && (
+      {statusBanner && activeTab !== 'analytics' && (
         <div
           className={`alert alert-${statusBanner.type} d-flex align-items-center justify-content-between py-2 px-3 rounded-3 mb-3 shadow-sm`}
           role="alert"
@@ -974,266 +974,246 @@ export function SalesTargetReport() {
       {activeTab === 'worksheet' && (
         <>
           {/* Filter & Suggestion Engine Bar */}
-          <div className="card border rounded-4 shadow-sm mb-3 bg-white">
-            <div className="card-body p-3">
-              <div className="row g-3 align-items-end">
-                <div className="col-12 col-md-4 col-xl-3">
-                  <label htmlFor="st-worksheet-store" className="form-label small fw-semibold text-secondary mb-1">
-                    <StoreIcon size={14} className="me-1" />
-                    Store Location
-                  </label>
-                  <StoreSearchSelect
-                    id="st-worksheet-store"
-                    stores={stores}
-                    value={selectedStore}
-                    onChange={setSelectedStore}
-                    placeholder="Type store code (e.g. MGM, MOA)..."
-                  />
-                </div>
-
-                <div className="col-6 col-md-2 col-xl-1">
-                  <label htmlFor="st-year" className="form-label small fw-semibold text-secondary mb-1">
-                    Target Year
-                  </label>
-                  <select
-                    id="st-year"
-                    className="form-select form-select-sm"
-                    value={targetYear}
-                    onChange={(e) => setTargetYear(Number(e.target.value))}
-                  >
-                    <option value={2025}>2025</option>
-                    <option value={2026}>2026</option>
-                    <option value={2027}>2027</option>
-                  </select>
-                </div>
-
-                <div className="col-6 col-md-2 col-xl-2">
-                  <label htmlFor="st-quarter" className="form-label small fw-semibold text-secondary mb-1">
-                    Target Quarter
-                  </label>
-                  <select
-                    id="st-quarter"
-                    className="form-select form-select-sm"
-                    value={targetQuarter}
-                    onChange={(e) => setTargetQuarter(Number(e.target.value))}
-                  >
-                    <option value={1}>Q1 (Jan – Mar)</option>
-                    <option value={2}>Q2 (Apr – Jun)</option>
-                    <option value={3}>Q3 (Jul – Sep)</option>
-                    <option value={4}>Q4 (Oct – Dec)</option>
-                  </select>
-                </div>
-
-                <div className="col-6 col-md-2 col-xl-2">
-                  <label htmlFor="st-basis" className="form-label small fw-semibold text-secondary mb-1">
-                    Suggestion Formula
-                  </label>
-                  <select
-                    id="st-basis"
-                    className="form-select form-select-sm"
-                    value={basisOption}
-                    onChange={(e) => setBasisOption(e.target.value as SuggestionBasisOption)}
-                  >
-                    <option value="AUTO">Auto (YoY if LY exists, else ADS)</option>
-                    <option value="YOY_TREND">Same Quarter Last Year + YoY %</option>
-                    <option value="BASIS_ADS">Basis Month ADS × Operating Days</option>
-                  </select>
-                </div>
-
-                <div className="col-6 col-md-2 col-xl-1">
-                  <label htmlFor="st-yoy-pct" className="form-label small fw-semibold text-secondary mb-1">
-                    YoY Growth %
-                  </label>
-                  <div className="input-group input-group-sm">
-                    <input
-                      id="st-yoy-pct"
-                      type="number"
-                      step="0.5"
-                      className="form-control"
-                      value={yoyGrowthPctInput}
-                      onChange={(e) => setYoyGrowthPctInput(Number(e.target.value))}
-                    />
-                    <span className="input-group-text">%</span>
-                  </div>
-                </div>
-
-                <div className="col-6 col-md-2 col-xl-1">
-                  <label htmlFor="st-avg-check" className="form-label small fw-semibold text-secondary mb-1">
-                    Avg / Check
-                  </label>
-                  <div className="input-group input-group-sm">
-                    <span className="input-group-text">₱</span>
-                    <input
-                      id="st-avg-check"
-                      type="number"
-                      step="5"
-                      className="form-control"
-                      value={avgPerCheckInput}
-                      onChange={(e) => setAvgPerCheckInput(Number(e.target.value))}
-                    />
-                  </div>
-                </div>
-
-                <div className="col-6 col-md-3 col-xl-2">
-                  <label htmlFor="st-mix-mode" className="form-label small fw-semibold text-secondary mb-1">
-                    Category % Mix Source
-                  </label>
-                  <select
-                    id="st-mix-mode"
-                    className="form-select form-select-sm"
-                    value={mixSourceMode}
-                    onChange={(e) => setMixSourceMode(e.target.value as MixSourceMode)}
-                  >
-                    <option value="default">Template Default (60/2/9/21/2/6)</option>
-                    <option value="historical">Store Historical Actual Mix %</option>
-                  </select>
-                </div>
-
-                {basisOption === 'BASIS_ADS' && (
-                  <div className="col-6 col-md-3 col-xl-2">
-                    <label htmlFor="st-basis-month" className="form-label small fw-semibold text-secondary mb-1">
-                      Basis Month (Optional)
-                    </label>
-                    <input
-                      id="st-basis-month"
-                      type="date"
-                      className="form-control form-control-sm"
-                      value={basisMonthDateInput}
-                      onChange={(e) => setBasisMonthDateInput(e.target.value)}
-                    />
-                  </div>
-                )}
+          <div className="menuitem-unified-filter-bar mb-3">
+            <div className="salestarget-filter-row">
+              <div className="salestarget-filter-item is-store">
+                <label htmlFor="st-worksheet-store" className="menuitem-filter-label">
+                  <StoreIcon size={13} className="me-1" />
+                  Store Location
+                </label>
+                <StoreSearchSelect
+                  id="st-worksheet-store"
+                  stores={stores}
+                  value={selectedStore}
+                  onChange={setSelectedStore}
+                  placeholder="Type store code (e.g. MGM, MOA)..."
+                />
               </div>
 
-              {/* Action Buttons Row */}
-              <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3 pt-3 border-top">
-                <div className="d-flex flex-wrap align-items-center gap-2">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-warning d-flex align-items-center gap-2 fw-semibold px-3"
-                    disabled={worksheetLoading || !selectedStore}
-                    onClick={() => void loadSavedOrSuggest('force-suggest')}
-                  >
-                    <Sparkles size={15} />
-                    <span>
-                      {worksheetLoading
-                        ? 'Calculating Suggestion...'
-                        : `Suggest Q${targetQuarter} ${targetYear} Target from Trend`}
-                    </span>
-                  </button>
+              <div className="salestarget-filter-item is-year">
+                <label htmlFor="st-year" className="menuitem-filter-label">
+                  Target Year
+                </label>
+                <select
+                  id="st-year"
+                  className="form-select form-select-sm"
+                  value={targetYear}
+                  onChange={(e) => setTargetYear(Number(e.target.value))}
+                >
+                  <option value={2025}>2025</option>
+                  <option value={2026}>2026</option>
+                  <option value={2027}>2027</option>
+                </select>
+              </div>
 
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-2"
-                    disabled={worksheetLoading || !selectedStore}
-                    onClick={() => void loadSavedOrSuggest('load-or-suggest')}
-                  >
-                    <RefreshCw size={14} />
-                    <span>Reload Saved</span>
-                  </button>
+              <div className="salestarget-filter-item is-quarter">
+                <label htmlFor="st-quarter" className="menuitem-filter-label">
+                  Target Quarter
+                </label>
+                <select
+                  id="st-quarter"
+                  className="form-select form-select-sm"
+                  value={targetQuarter}
+                  onChange={(e) => setTargetQuarter(Number(e.target.value))}
+                >
+                  <option value={1}>Q1 (Jan – Mar)</option>
+                  <option value={2}>Q2 (Apr – Jun)</option>
+                  <option value={3}>Q3 (Jul – Sep)</option>
+                  <option value={4}>Q4 (Oct – Dec)</option>
+                </select>
+              </div>
+
+              <div className="salestarget-filter-item is-formula">
+                <label htmlFor="st-basis" className="menuitem-filter-label">
+                  Suggestion Formula
+                </label>
+                <select
+                  id="st-basis"
+                  className="form-select form-select-sm"
+                  value={basisOption}
+                  onChange={(e) => setBasisOption(e.target.value as SuggestionBasisOption)}
+                >
+                  <option value="AUTO">Auto (YoY if LY exists, else ADS)</option>
+                  <option value="YOY_TREND">Same Quarter Last Year + YoY %</option>
+                  <option value="BASIS_ADS">Basis Month ADS × Operating Days</option>
+                </select>
+              </div>
+
+              <div className="salestarget-filter-item is-yoy">
+                <label htmlFor="st-yoy-pct" className="menuitem-filter-label">
+                  YoY Growth %
+                </label>
+                <div className="input-group input-group-sm">
+                  <input
+                    id="st-yoy-pct"
+                    type="number"
+                    step="0.5"
+                    className="form-control"
+                    value={yoyGrowthPctInput}
+                    onChange={(e) => setYoyGrowthPctInput(Number(e.target.value))}
+                  />
+                  <span className="input-group-text">%</span>
                 </div>
+              </div>
 
-                <div className="d-flex flex-wrap align-items-center gap-2">
-                  {worksheetTarget && (
-                    <button
-                      type="button"
-                      className="btn rof-export-btn rof-export-btn-excel btn-sm d-inline-flex align-items-center gap-2 px-3 fw-semibold"
-                      style={{ height: '34px', borderRadius: '8px' }}
-                      onClick={() => exportWorksheetToExcel(worksheetTarget)}
-                      title="Download Styled Excel Target Worksheet (.xlsx)"
-                    >
-                      <FileSpreadsheet size={15} />
-                      <span>Export Excel (.xlsx)</span>
-                    </button>
-                  )}
+              <div className="salestarget-filter-item is-avgcheck">
+                <label htmlFor="st-avg-check" className="menuitem-filter-label">
+                  Avg / Check
+                </label>
+                <div className="input-group input-group-sm">
+                  <span className="input-group-text">₱</span>
+                  <input
+                    id="st-avg-check"
+                    type="number"
+                    step="5"
+                    className="form-control"
+                    value={avgPerCheckInput}
+                    onChange={(e) => setAvgPerCheckInput(Number(e.target.value))}
+                  />
+                </div>
+              </div>
 
+              <div className="salestarget-filter-item is-mixsource">
+                <label htmlFor="st-mix-mode" className="menuitem-filter-label">
+                  Category % Mix Source
+                </label>
+                <select
+                  id="st-mix-mode"
+                  className="form-select form-select-sm"
+                  value={mixSourceMode}
+                  onChange={(e) => setMixSourceMode(e.target.value as MixSourceMode)}
+                >
+                  <option value="default">Template Default (60/2/9/21/2/6)</option>
+                  <option value="historical">Store Historical Actual Mix %</option>
+                </select>
+              </div>
+
+              {basisOption === 'BASIS_ADS' && (
+                <div className="salestarget-filter-item is-basismonth">
+                  <label htmlFor="st-basis-month" className="menuitem-filter-label">
+                    Basis Month (Optional)
+                  </label>
+                  <input
+                    id="st-basis-month"
+                    type="date"
+                    className="form-control form-control-sm"
+                    value={basisMonthDateInput}
+                    onChange={(e) => setBasisMonthDateInput(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons Row */}
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3 pt-3 border-top">
+              <div className="d-flex flex-wrap align-items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-warning salestarget-action-btn"
+                  disabled={worksheetLoading || !selectedStore}
+                  onClick={() => void loadSavedOrSuggest('force-suggest')}
+                >
+                  <Sparkles size={15} />
+                  <span>
+                    {worksheetLoading
+                      ? 'Calculating Suggestion...'
+                      : `Suggest Q${targetQuarter} ${targetYear} Target from Trend`}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary salestarget-action-btn"
+                  disabled={worksheetLoading || !selectedStore}
+                  onClick={() => void loadSavedOrSuggest('load-or-suggest')}
+                >
+                  <RefreshCw size={14} />
+                  <span>Reload Saved</span>
+                </button>
+              </div>
+
+              <div className="d-flex flex-wrap align-items-center gap-2">
+                {worksheetTarget && (
                   <button
                     type="button"
-                    className="btn btn-sm btn-success d-flex align-items-center gap-2 fw-semibold px-3"
-                    style={{ height: '34px', borderRadius: '8px' }}
-                    disabled={savingTarget || !worksheetTarget}
-                    onClick={() => void handleSaveTarget()}
+                    className="btn rof-export-btn rof-export-btn-excel salestarget-action-btn"
+                    onClick={() => exportWorksheetToExcel(worksheetTarget)}
+                    title="Download Styled Excel Target Worksheet (.xlsx)"
                   >
-                    <Save size={15} />
-                    <span>{savingTarget ? 'Saving...' : 'Save Quarter Target'}</span>
+                    <FileSpreadsheet size={15} />
+                    <span>Export Excel (.xlsx)</span>
                   </button>
-                </div>
+                )}
+
+                <button
+                  type="button"
+                  className="btn btn-success salestarget-action-btn"
+                  disabled={savingTarget || !worksheetTarget}
+                  onClick={() => void handleSaveTarget()}
+                >
+                  <Save size={15} />
+                  <span>{savingTarget ? 'Saving...' : 'Save Quarter Target'}</span>
+                </button>
               </div>
             </div>
           </div>
 
           {/* Quarter Summary KPI Strip */}
           {worksheetTarget && (
-            <div className="row g-3 mb-3">
-              <div className="col-12 col-sm-6 col-xl-3">
-                <div className="card border rounded-4 shadow-sm h-100 bg-white">
-                  <div className="card-body py-3 px-3">
-                    <small className="text-secondary d-block mb-1">
-                      Q{worksheetTarget.targetQuarter} {worksheetTarget.targetYear} Total Target Net Sales
-                    </small>
-                    <div className="fs-4 fw-bold text-primary">
-                      ₱{formatMoney(quarterWorksheetTotals.totalTargetSales)}
-                    </div>
-                    <small className="text-secondary">
-                      Store: <strong>{worksheetTarget.locationName}</strong> ({worksheetTarget.orgLocationRef || 'Store'})
-                    </small>
-                  </div>
+            <div className="salestarget-kpi-grid mb-3">
+              <div className="menuitem-kpi-card">
+                <div className="menuitem-kpi-label">
+                  Q{worksheetTarget.targetQuarter} {worksheetTarget.targetYear} Total Target Net Sales
+                </div>
+                <div className="salestarget-kpi-value text-primary">
+                  ₱{formatMoney(quarterWorksheetTotals.totalTargetSales)}
+                </div>
+                <div className="menuitem-kpi-subtext">
+                  Store: <strong>{worksheetTarget.locationName}</strong> ({worksheetTarget.orgLocationRef || 'Store'})
                 </div>
               </div>
 
-              <div className="col-12 col-sm-6 col-xl-3">
-                <div className="card border rounded-4 shadow-sm h-100 bg-white">
-                  <div className="card-body py-3 px-3">
-                    <small className="text-secondary d-block mb-1">
-                      Quarter Average Daily Sales (ADS)
-                    </small>
-                    <div className="fs-4 fw-bold">
-                      ₱{formatMoney(quarterWorksheetTotals.quarterAds)}
-                    </div>
-                    <small className="text-secondary">
-                      Across <strong>{quarterWorksheetTotals.totalDays}</strong> operating days in Q{worksheetTarget.targetQuarter}
-                    </small>
-                  </div>
+              <div className="menuitem-kpi-card">
+                <div className="menuitem-kpi-label">
+                  Quarter Average Daily Sales (ADS)
+                </div>
+                <div className="salestarget-kpi-value">
+                  ₱{formatMoney(quarterWorksheetTotals.quarterAds)}
+                </div>
+                <div className="menuitem-kpi-subtext">
+                  Across <strong>{quarterWorksheetTotals.totalDays}</strong> operating days in Q{worksheetTarget.targetQuarter}
                 </div>
               </div>
 
-              <div className="col-12 col-sm-6 col-xl-3">
-                <div className="card border rounded-4 shadow-sm h-100 bg-white">
-                  <div className="card-body py-3 px-3">
-                    <small className="text-secondary d-block mb-1">
-                      Same Quarter Last Year ({worksheetTarget.targetYear - 1} Q{worksheetTarget.targetQuarter})
-                    </small>
-                    <div className="fs-4 fw-bold">
-                      ₱{formatMoney(quarterWorksheetTotals.totalLastYearSales)}
-                    </div>
-                    <small
-                      className={
-                        quarterWorksheetTotals.vsLastYearPct >= 0
-                          ? 'text-success fw-semibold'
-                          : 'text-danger fw-semibold'
-                      }
-                    >
-                      {quarterWorksheetTotals.totalLastYearSales > 0
-                        ? `${quarterWorksheetTotals.vsLastYearPct >= 0 ? '+' : ''}${quarterWorksheetTotals.vsLastYearPct.toFixed(2)}% vs. Last Year`
-                        : 'New Store / Using Basis Month ADS'}
-                    </small>
-                  </div>
+              <div className="menuitem-kpi-card">
+                <div className="menuitem-kpi-label">
+                  Same Quarter Last Year ({worksheetTarget.targetYear - 1} Q{worksheetTarget.targetQuarter})
+                </div>
+                <div className="salestarget-kpi-value">
+                  ₱{formatMoney(quarterWorksheetTotals.totalLastYearSales)}
+                </div>
+                <div
+                  className={`menuitem-kpi-subtext fw-semibold ${
+                    quarterWorksheetTotals.vsLastYearPct >= 0
+                      ? 'text-success'
+                      : 'text-danger'
+                  }`}
+                >
+                  {quarterWorksheetTotals.totalLastYearSales > 0
+                    ? `${quarterWorksheetTotals.vsLastYearPct >= 0 ? '+' : ''}${quarterWorksheetTotals.vsLastYearPct.toFixed(2)}% vs. Last Year`
+                    : 'New Store / Using Basis Month ADS'}
                 </div>
               </div>
 
-              <div className="col-12 col-sm-6 col-xl-3">
-                <div className="card border rounded-4 shadow-sm h-100 bg-white">
-                  <div className="card-body py-3 px-3">
-                    <small className="text-secondary d-block mb-1">
-                      Target Quarter Customer Count (@ ₱{formatMoney(worksheetTarget.avgPerCheckDefault)})
-                    </small>
-                    <div className="fs-4 fw-bold">
-                      {formatQty(quarterWorksheetTotals.totalCustomers, 0)} checks
-                    </div>
-                    <small className="text-secondary">
-                      Formula: Daily Target Sales ÷ Average Per Check
-                    </small>
-                  </div>
+              <div className="menuitem-kpi-card">
+                <div className="menuitem-kpi-label">
+                  Target Quarter Customer Count (@ ₱{formatMoney(worksheetTarget.avgPerCheckDefault)})
+                </div>
+                <div className="salestarget-kpi-value">
+                  {formatQty(quarterWorksheetTotals.totalCustomers, 0)} checks
+                </div>
+                <div className="menuitem-kpi-subtext">
+                  Formula: Daily Target Sales ÷ Average Per Check
                 </div>
               </div>
             </div>
@@ -1257,13 +1237,13 @@ export function SalesTargetReport() {
               </div>
 
               <div className="table-responsive">
-                <table className="table table-bordered table-sm align-middle mb-0" style={{ fontSize: '0.82rem' }}>
+                <table className="table table-bordered table-sm align-middle mb-0 salestarget-matrix-table">
                   <thead className="table-light text-center">
                     <tr>
-                      <th rowSpan={2} className="text-start ps-3" style={{ minWidth: 230 }}>
+                      <th rowSpan={2} className="text-start ps-3 st-col-particulars">
                         PARTICULARS
                       </th>
-                      <th rowSpan={2} style={{ minWidth: 105 }}>
+                      <th rowSpan={2} className="st-col-uom">
                         PRICE / UOM
                       </th>
                       {computedMonths.map((cm) => (
@@ -1280,16 +1260,10 @@ export function SalesTargetReport() {
                     <tr>
                       {computedMonths.map((cm) => (
                         <Fragment key={`subhdr-${cm.raw.targetMonth}`}>
-                          <th
-                            className="bg-light text-secondary fw-semibold"
-                            style={{ minWidth: 135 }}
-                          >
+                          <th className="bg-light text-secondary fw-semibold st-col-daytype">
                             WEEKDAYS
                           </th>
-                          <th
-                            className="bg-warning bg-opacity-10 text-dark fw-semibold"
-                            style={{ minWidth: 135 }}
-                          >
+                          <th className="bg-warning bg-opacity-10 text-dark fw-semibold st-col-daytype">
                             WEEKENDS / HD
                           </th>
                         </Fragment>
@@ -1755,236 +1729,216 @@ export function SalesTargetReport() {
           =================================================================== */}
       {activeTab === 'analytics' && (
         <>
-          {/* Analytics Filters Bar */}
-          <div className="card border rounded-4 shadow-sm mb-3 bg-white">
-            <div className="card-body p-3">
-              <div className="row g-3 align-items-end">
-                <div className="col-12 col-md-4 col-xl-3">
-                  <label htmlFor="st-analytics-store" className="form-label small fw-semibold text-secondary mb-1">
-                    <StoreIcon size={14} className="me-1" />
-                    Store Scope
-                  </label>
-                  <StoreSearchSelect
-                    id="st-analytics-store"
-                    stores={stores}
-                    value={analyticsStore}
-                    onChange={setAnalyticsStore}
-                    includeAllOption
-                    allOptionLabel="ALL STORES (Consolidated)"
-                  />
-                </div>
+          {/* Analytics Filters Bar — Fluid Auto-Scaling Flexbox (125% DPI Safe) */}
+          <div className="menuitem-unified-filter-bar mb-3">
+            <div className="salestarget-filter-row">
+              <div className="salestarget-filter-item is-store">
+                <label htmlFor="st-analytics-store" className="menuitem-filter-label">
+                  <StoreIcon size={13} className="me-1" />
+                  Store Scope
+                </label>
+                <StoreSearchSelect
+                  id="st-analytics-store"
+                  stores={stores}
+                  value={analyticsStore}
+                  onChange={setAnalyticsStore}
+                  includeAllOption
+                  allOptionLabel="ALL STORES (Consolidated)"
+                />
+              </div>
 
-                <div className="col-6 col-md-2 col-xl-1">
-                  <label htmlFor="st-an-year" className="form-label small fw-semibold text-secondary mb-1">
-                    Year
-                  </label>
-                  <select
-                    id="st-an-year"
-                    className="form-select form-select-sm"
-                    value={targetYear}
-                    onChange={(e) => setTargetYear(Number(e.target.value))}
-                  >
-                    <option value={2025}>2025</option>
-                    <option value={2026}>2026</option>
-                    <option value={2027}>2027</option>
-                  </select>
-                </div>
+              <div className="salestarget-filter-item is-year">
+                <label htmlFor="st-an-year" className="menuitem-filter-label">
+                  Year
+                </label>
+                <select
+                  id="st-an-year"
+                  className="form-select form-select-sm"
+                  value={targetYear}
+                  onChange={(e) => setTargetYear(Number(e.target.value))}
+                >
+                  <option value={2025}>2025</option>
+                  <option value={2026}>2026</option>
+                  <option value={2027}>2027</option>
+                </select>
+              </div>
 
-                <div className="col-6 col-md-2 col-xl-2">
-                  <label htmlFor="st-an-quarter" className="form-label small fw-semibold text-secondary mb-1">
-                    Quarter
-                  </label>
-                  <select
-                    id="st-an-quarter"
-                    className="form-select form-select-sm"
-                    value={targetQuarter}
-                    onChange={(e) => {
-                      setTargetQuarter(Number(e.target.value));
-                      setAnalyticsMonthFilter(0);
-                    }}
-                  >
-                    <option value={1}>Q1 (Jan – Mar)</option>
-                    <option value={2}>Q2 (Apr – Jun)</option>
-                    <option value={3}>Q3 (Jul – Sep)</option>
-                    <option value={4}>Q4 (Oct – Dec)</option>
-                  </select>
-                </div>
+              <div className="salestarget-filter-item is-quarter">
+                <label htmlFor="st-an-quarter" className="menuitem-filter-label">
+                  Quarter
+                </label>
+                <select
+                  id="st-an-quarter"
+                  className="form-select form-select-sm"
+                  value={targetQuarter}
+                  onChange={(e) => {
+                    setTargetQuarter(Number(e.target.value));
+                    setAnalyticsMonthFilter(0);
+                  }}
+                >
+                  <option value={1}>Q1 (Jan – Mar)</option>
+                  <option value={2}>Q2 (Apr – Jun)</option>
+                  <option value={3}>Q3 (Jul – Sep)</option>
+                  <option value={4}>Q4 (Oct – Dec)</option>
+                </select>
+              </div>
 
-                <div className="col-6 col-md-2 col-xl-2">
-                  <label htmlFor="st-an-month" className="form-label small fw-semibold text-secondary mb-1">
-                    Month Filter
-                  </label>
-                  <select
-                    id="st-an-month"
-                    className="form-select form-select-sm"
-                    value={analyticsMonthFilter}
-                    onChange={(e) => setAnalyticsMonthFilter(Number(e.target.value))}
-                  >
-                    <option value={0}>All 3 Months (Q{targetQuarter})</option>
-                    {getQuarterMonths(targetQuarter).map((m) => (
-                      <option key={m.month} value={m.month}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className="salestarget-filter-item is-month">
+                <label htmlFor="st-an-month" className="menuitem-filter-label">
+                  Month Filter
+                </label>
+                <select
+                  id="st-an-month"
+                  className="form-select form-select-sm"
+                  value={analyticsMonthFilter}
+                  onChange={(e) => setAnalyticsMonthFilter(Number(e.target.value))}
+                >
+                  <option value={0}>All 3 Months (Q{targetQuarter})</option>
+                  {getQuarterMonths(targetQuarter).map((m) => (
+                    <option key={m.month} value={m.month}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                <div className="col-6 col-md-2 col-xl-2">
-                  <label className="form-label small fw-semibold text-secondary mb-1 d-block">
-                    Sales Metric Basis
-                  </label>
-                  <div className="btn-group btn-group-sm w-100">
-                    <button
-                      type="button"
-                      className={`btn ${
-                        analyticsSalesMetric === 'net'
-                          ? 'menuitem-seg-btn-active'
-                          : 'menuitem-seg-btn'
-                      }`}
-                      onClick={() => setAnalyticsSalesMetric('net')}
-                    >
-                      Net Sales
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn ${
-                        analyticsSalesMetric === 'gross'
-                          ? 'menuitem-seg-btn-active'
-                          : 'menuitem-seg-btn'
-                      }`}
-                      onClick={() => setAnalyticsSalesMetric('gross')}
-                    >
-                      Gross Sales
-                    </button>
-                  </div>
-                </div>
-
-                <div className="col-12 col-md-12 col-xl-2 d-flex gap-2 justify-content-end">
+              <div className="salestarget-filter-item is-metric">
+                <label className="menuitem-filter-label d-block">
+                  Sales Metric Basis
+                </label>
+                <div className="btn-group btn-group-sm salestarget-seg-group">
                   <button
                     type="button"
-                    className="btn btn-sm btn-primary d-flex align-items-center gap-1 px-3"
-                    style={{ height: '34px', borderRadius: '8px' }}
-                    disabled={analyticsLoading}
-                    onClick={() => void fetchAnalytics()}
+                    className={`btn ${
+                      analyticsSalesMetric === 'net'
+                        ? 'menuitem-seg-btn-active'
+                        : 'menuitem-seg-btn'
+                    }`}
+                    onClick={() => setAnalyticsSalesMetric('net')}
                   >
-                    <RefreshCw size={14} className={analyticsLoading ? 'spin' : ''} />
-                    <span>{analyticsLoading ? 'Loading...' : 'Refresh'}</span>
+                    Net Sales
                   </button>
-
                   <button
                     type="button"
-                    className="btn rof-export-btn rof-export-btn-excel btn-sm d-inline-flex align-items-center gap-1 px-3 fw-semibold"
-                    style={{ height: '34px', borderRadius: '8px' }}
-                    disabled={filteredAnalyticsSummary.length === 0}
-                    onClick={() => {
-                      const selectedMonthObj = getQuarterMonths(targetQuarter).find(
-                        (m) => m.month === analyticsMonthFilter
-                      );
-                      exportAnalyticsToExcel({
-                        targetYear,
-                        targetQuarter,
-                        locationName: analyticsStore || 'ALL',
-                        monthLabel: selectedMonthObj?.name,
-                        salesMetric: analyticsSalesMetric,
-                        summary: filteredAnalyticsSummary,
-                        weekdayWeekend: filteredAnalyticsWdWe,
-                        categories: filteredAnalyticsCategories,
-                      });
-                    }}
-                    title="Download Styled Excel Analytics Workbook (.xlsx)"
+                    className={`btn ${
+                      analyticsSalesMetric === 'gross'
+                        ? 'menuitem-seg-btn-active'
+                        : 'menuitem-seg-btn'
+                    }`}
+                    onClick={() => setAnalyticsSalesMetric('gross')}
                   >
-                    <FileSpreadsheet size={15} />
-                    <span>Export .xlsx</span>
+                    Gross Sales
                   </button>
                 </div>
+              </div>
+
+              <div className="salestarget-filter-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary salestarget-action-btn"
+                  disabled={analyticsLoading}
+                  onClick={() => void fetchAnalytics()}
+                >
+                  <RefreshCw size={14} className={analyticsLoading ? 'spin' : ''} />
+                  <span>{analyticsLoading ? 'Loading...' : 'Refresh'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn rof-export-btn rof-export-btn-excel salestarget-action-btn"
+                  disabled={filteredAnalyticsSummary.length === 0}
+                  onClick={() => {
+                    const selectedMonthObj = getQuarterMonths(targetQuarter).find(
+                      (m) => m.month === analyticsMonthFilter
+                    );
+                    exportAnalyticsToExcel({
+                      targetYear,
+                      targetQuarter,
+                      locationName: analyticsStore || 'ALL',
+                      monthLabel: selectedMonthObj?.name,
+                      salesMetric: analyticsSalesMetric,
+                      summary: filteredAnalyticsSummary,
+                      weekdayWeekend: filteredAnalyticsWdWe,
+                      categories: filteredAnalyticsCategories,
+                    });
+                  }}
+                  title="Download Styled Excel Analytics Workbook (.xlsx)"
+                >
+                  <FileSpreadsheet size={15} />
+                  <span>Export .xlsx</span>
+                </button>
               </div>
             </div>
           </div>
 
           {/* Analytics Executive KPI Cards */}
-          <div className="row g-3 mb-3">
-            <div className="col-12 col-sm-6 col-xl-3">
-              <div className="card border rounded-4 shadow-sm h-100 bg-white">
-                <div className="card-body py-3 px-3">
-                  <div className="d-flex justify-content-between align-items-start mb-1">
-                    <small className="text-secondary">
-                      Actual {analyticsSalesMetric === 'gross' ? 'Gross' : 'Net'} Sales vs. Target
-                    </small>
-                    <span
-                      className={`badge ${
-                        analyticsKpis.achievementPct >= 100
-                          ? 'text-bg-success'
-                          : analyticsKpis.achievementPct >= 85
-                            ? 'text-bg-warning'
-                            : 'text-bg-danger'
-                      }`}
-                    >
-                      {analyticsKpis.achievementPct.toFixed(1)}% Achieved
-                    </span>
-                  </div>
-                  <div className="fs-4 fw-bold">₱{formatMoney(analyticsKpis.primaryActual)}</div>
-                  <small className="text-secondary d-block">
-                    Target: <strong>₱{formatMoney(analyticsKpis.targetSales)}</strong> (Var:{' '}
-                    <span className={analyticsKpis.variance >= 0 ? 'text-success' : 'text-danger'}>
-                      {analyticsKpis.variance >= 0 ? '+' : ''}₱{formatMoney(analyticsKpis.variance)}
-                    </span>
-                    )
-                  </small>
-                </div>
+          <div className="salestarget-kpi-grid mb-3">
+            <div className="menuitem-kpi-card">
+              <div className="d-flex justify-content-between align-items-center gap-2 mb-1">
+                <span className="menuitem-kpi-label mb-0">
+                  Actual {analyticsSalesMetric === 'gross' ? 'Gross' : 'Net'} Sales vs. Target
+                </span>
+                <span
+                  className={`badge flex-shrink-0 ${
+                    analyticsKpis.achievementPct >= 100
+                      ? 'text-bg-success'
+                      : analyticsKpis.achievementPct >= 85
+                        ? 'text-bg-warning'
+                        : 'text-bg-danger'
+                  }`}
+                >
+                  {analyticsKpis.achievementPct.toFixed(1)}% Achieved
+                </span>
+              </div>
+              <div className="salestarget-kpi-value">₱{formatMoney(analyticsKpis.primaryActual)}</div>
+              <div className="menuitem-kpi-subtext">
+                Target: <strong>₱{formatMoney(analyticsKpis.targetSales)}</strong> (Var:{' '}
+                <span className={analyticsKpis.variance >= 0 ? 'text-success fw-semibold' : 'text-danger fw-semibold'}>
+                  {analyticsKpis.variance >= 0 ? '+' : ''}₱{formatMoney(analyticsKpis.variance)}
+                </span>
+                )
               </div>
             </div>
 
-            <div className="col-12 col-sm-6 col-xl-3">
-              <div className="card border rounded-4 shadow-sm h-100 bg-white">
-                <div className="card-body py-3 px-3">
-                  <div className="d-flex justify-content-between align-items-start mb-1">
-                    <small className="text-secondary">
-                      YoY Trend ({targetYear} vs. {targetYear - 1})
-                    </small>
-                    <TrendingUp size={16} className="text-primary" />
-                  </div>
-                  <div
-                    className={`fs-4 fw-bold ${
-                      analyticsKpis.yoyGrowthPct >= 0 ? 'text-success' : 'text-danger'
-                    }`}
-                  >
-                    {analyticsKpis.yoyGrowthPct >= 0 ? '+' : ''}
-                    {analyticsKpis.yoyGrowthPct.toFixed(2)}%
-                  </div>
-                  <small className="text-secondary d-block">
-                    Last Year Net Sales: <strong>₱{formatMoney(analyticsKpis.lastYearNet)}</strong>
-                  </small>
-                </div>
+            <div className="menuitem-kpi-card">
+              <div className="d-flex justify-content-between align-items-center gap-2 mb-1">
+                <span className="menuitem-kpi-label mb-0">
+                  YoY Trend ({targetYear} vs. {targetYear - 1})
+                </span>
+                <TrendingUp size={16} className="text-primary flex-shrink-0" />
+              </div>
+              <div
+                className={`salestarget-kpi-value ${
+                  analyticsKpis.yoyGrowthPct >= 0 ? 'text-success' : 'text-danger'
+                }`}
+              >
+                {analyticsKpis.yoyGrowthPct >= 0 ? '+' : ''}
+                {analyticsKpis.yoyGrowthPct.toFixed(2)}%
+              </div>
+              <div className="menuitem-kpi-subtext">
+                Last Year Net Sales: <strong>₱{formatMoney(analyticsKpis.lastYearNet)}</strong>
               </div>
             </div>
 
-            <div className="col-12 col-sm-6 col-xl-3">
-              <div className="card border rounded-4 shadow-sm h-100 bg-white">
-                <div className="card-body py-3 px-3">
-                  <small className="text-secondary d-block mb-1">
-                    Average Daily Sales (Actual vs. Target ADS)
-                  </small>
-                  <div className="fs-4 fw-bold">₱{formatMoney(analyticsKpis.actualAds)}</div>
-                  <small className="text-secondary d-block">
-                    Target ADS: <strong>₱{formatMoney(analyticsKpis.targetAds)}</strong> / day
-                  </small>
-                </div>
+            <div className="menuitem-kpi-card">
+              <div className="menuitem-kpi-label mb-1">
+                Average Daily Sales (Actual vs. Target ADS)
+              </div>
+              <div className="salestarget-kpi-value">₱{formatMoney(analyticsKpis.actualAds)}</div>
+              <div className="menuitem-kpi-subtext">
+                Target ADS: <strong>₱{formatMoney(analyticsKpis.targetAds)}</strong> / day
               </div>
             </div>
 
-            <div className="col-12 col-sm-6 col-xl-3">
-              <div className="card border rounded-4 shadow-sm h-100 bg-white">
-                <div className="card-body py-3 px-3">
-                  <div className="d-flex justify-content-between align-items-start mb-1">
-                    <small className="text-secondary">Actual Avg Check &amp; Guest Count</small>
-                    <Users size={16} className="text-secondary" />
-                  </div>
-                  <div className="fs-4 fw-bold">₱{formatMoney(analyticsKpis.actualAvgCheck)}</div>
-                  <small className="text-secondary d-block">
-                    Actual Checks: <strong>{formatQty(analyticsKpis.actualCustomers, 0)}</strong> (Target:{' '}
-                    {formatQty(analyticsKpis.targetCustomers, 0)} @ ₱470)
-                  </small>
-                </div>
+            <div className="menuitem-kpi-card">
+              <div className="d-flex justify-content-between align-items-center gap-2 mb-1">
+                <span className="menuitem-kpi-label mb-0">Actual Avg Check &amp; Guest Count</span>
+                <Users size={16} className="text-secondary flex-shrink-0" />
+              </div>
+              <div className="salestarget-kpi-value">₱{formatMoney(analyticsKpis.actualAvgCheck)}</div>
+              <div className="menuitem-kpi-subtext">
+                Actual Checks: <strong>{formatQty(analyticsKpis.actualCustomers, 0)}</strong> (Target:{' '}
+                {formatQty(analyticsKpis.targetCustomers, 0)} @ ₱470)
               </div>
             </div>
           </div>
@@ -2236,7 +2190,7 @@ export function SalesTargetReport() {
       {activeTab === 'settings' && (
         <div className="row g-3">
           {/* Left Column: Calendar & Holiday Configuration */}
-          <div className="col-12 col-xl-6">
+          <div className="col-12 col-lg-6">
             <div className="card border rounded-4 shadow-sm bg-white mb-3">
               <div className="card-header bg-white border-bottom py-3 d-flex align-items-center justify-content-between">
                 <div>
@@ -2381,7 +2335,7 @@ export function SalesTargetReport() {
           </div>
 
           {/* Right Column: Target Category Master & POS Item Mapping Rules */}
-          <div className="col-12 col-xl-6">
+          <div className="col-12 col-lg-6">
             <div className="card border rounded-4 shadow-sm bg-white mb-3">
               <div className="card-header bg-white border-bottom py-3 d-flex align-items-center justify-content-between">
                 <div>

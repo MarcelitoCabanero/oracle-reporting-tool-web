@@ -13,6 +13,7 @@ import { menuItemRouter } from './modules/menuitem/menuitem.routes.js';
 import { systemSalesRouter } from './modules/systemsales/systemsales.routes.js';
 import { promotionsRouter } from './modules/promotions/promotions.routes.js';
 import { salesTargetRouter } from './modules/salestarget/salestarget.routes.js';
+import { financeInsightRouter } from './modules/financeinsight/financeinsight.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,6 +45,7 @@ app.use('/api/reports/menu-item', menuItemRouter);
 app.use('/api/reports/system-sales', systemSalesRouter);
 app.use('/api/reports/promotions', promotionsRouter);
 app.use('/api/reports/sales-target', salesTargetRouter);
+app.use('/api/reports/finance-insight', financeInsightRouter);
 
 // Serve built frontend static assets in production / Docker
 const clientDistCandidates = [

@@ -8,6 +8,7 @@ import { DepositMonitoring } from '../features/deposit/DepositMonitoring';
 import { DepositNotificationProvider } from '../features/deposit/DepositNotificationContext';
 import { MenuItemReport } from '../features/menuitem/MenuItemReport';
 import { SystemSalesSummary } from '../features/systemsales/SystemSalesSummary';
+import { FinanceInsightDashboard } from '../features/financeinsight/FinanceInsightDashboard';
 import { PromotionsReport } from '../features/promotions/PromotionsReport';
 import { SalesTargetReport } from '../features/salestarget/SalesTargetReport';
 import { SessionTimeoutModal } from '../components/common/SessionTimeoutModal';
@@ -108,14 +109,6 @@ export function App() {
 
   function renderPlaceholderPage() {
     switch (activePage) {
-      case 'finance-insight':
-        return (
-          <PlaceholderPage
-            title="Finance Insight"
-            description="Financial performance and analytical dashboards across store locations."
-          />
-        );
-
       case 'hourly-sales':
         return (
           <PlaceholderPage
@@ -191,6 +184,12 @@ export function App() {
         {(visitedPages['sales-target'] || activePage === 'sales-target') && (
           <div style={{ display: activePage === 'sales-target' ? 'block' : 'none' }}>
             <SalesTargetReport />
+          </div>
+        )}
+
+        {(visitedPages['finance-insight'] || activePage === 'finance-insight') && (
+          <div style={{ display: activePage === 'finance-insight' ? 'block' : 'none' }}>
+            <FinanceInsightDashboard />
           </div>
         )}
 

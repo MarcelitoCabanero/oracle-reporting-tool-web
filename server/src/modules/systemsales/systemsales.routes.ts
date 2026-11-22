@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { getPool, sql } from '../../database/db.js';
-import { requireAuth } from '../auth/auth.middleware.js';
+import { requireAuth, type AuthenticatedRequest } from '../auth/auth.middleware.js';
+import { enforceStoreScope, getScopedStores } from '../auth/storeScope.js';
 
 export const systemSalesRouter = Router();
 
 // Protect all System Sales endpoints with requireAuth
 systemSalesRouter.use(requireAuth);
+systemSalesRouter.use(enforceStoreScope);
 
 function toNumber(val: unknown): number {
   if (val === null || val === undefined) return 0;
@@ -17,20 +19,10 @@ function toNumber(val: unknown): number {
  * GET /api/reports/system-sales/stores
  * Returns list of active physical store locations
  */
-systemSalesRouter.get('/stores', async (_req, res) => {
+systemSalesRouter.get('/stores', async (req: AuthenticatedRequest, res) => {
   try {
-    const pool = await getPool();
-    const result = await pool.request().query(`
-      SELECT DISTINCT 
-        LOCATIONID, 
-        LOCATIONNAME, 
-        ORGLOCATIONREF
-      FROM dbo.dts_location
-      WHERE IsActive = 1 AND access = 'Store'
-      ORDER BY LOCATIONNAME ASC
-    `);
-
-    res.json({ stores: result.recordset });
+    const stores = await getScopedStores(req.user!);
+    res.json({ stores });
   } catch (error) {
     console.error('Failed to fetch stores for System Sales:', error);
     res.status(500).json({ error: 'Failed to retrieve store locations from database.' });

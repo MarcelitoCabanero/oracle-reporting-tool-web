@@ -5,11 +5,43 @@ import { Client } from 'basic-ftp';
 import { getPool, sql } from '../../database/db.js';
 import { env } from '../../config/env.js';
 import { requireAuth, type AuthenticatedRequest } from '../auth/auth.middleware.js';
+import { allowedStoresSql, enforceStoreScope, getScopedStores, isStoreAllowed } from '../auth/storeScope.js';
 
 export const depositRouter = Router();
 
 // Protect all Deposit Monitoring endpoints with requireAuth
 depositRouter.use(requireAuth);
+depositRouter.use(enforceStoreScope);
+
+// Scoped users (Area Manager) may only access deposits that belong to their assigned stores.
+depositRouter.param('depoId', async (req: AuthenticatedRequest, res, next, value) => {
+  const allowed = req.allowedStoreNames;
+  if (!allowed) {
+    next();
+    return;
+  }
+  const depoId = Number(value);
+  if (!Number.isInteger(depoId) || depoId <= 0) {
+    next();
+    return;
+  }
+  try {
+    const pool = await getPool();
+    const r = await pool
+      .request()
+      .input('depoId', sql.Int, depoId)
+      .query('SELECT locationname FROM dbo.dts_depo WHERE depo_id = @depoId');
+    const name = r.recordset[0]?.locationname;
+    if (name !== undefined && !isStoreAllowed(allowed, String(name ?? ''))) {
+      res.status(403).json({ error: 'You do not have access to this store.' });
+      return;
+    }
+    next();
+  } catch (error) {
+    console.error('Deposit store-scope check failed:', error);
+    res.status(500).json({ error: 'Failed to verify store access.' });
+  }
+});
 
 export type DepositApprovalStatus = 'Not Required' | 'Pending' | 'Approved' | 'Rejected';
 export type PettyCashStatus = 'N/A' | 'Unreplenished' | 'Replenished';
@@ -514,17 +546,10 @@ async function fetchDepositThreadPayload(pool: sql.ConnectionPool, depoId: numbe
  * GET /api/reports/deposit/stores
  * Returns all active physical store locations (access = 'Store')
  */
-depositRouter.get('/stores', async (_req, res) => {
+depositRouter.get('/stores', async (req: AuthenticatedRequest, res) => {
   try {
-    const pool = await getPool();
-    const result = await pool.request().query(`
-      SELECT DISTINCT LOCATIONID, LOCATIONNAME, ORGLOCATIONREF
-      FROM dbo.dts_location
-      WHERE IsActive = 1 AND access = 'Store'
-      ORDER BY LOCATIONNAME ASC
-    `);
-
-    res.json({ stores: result.recordset });
+    const stores = await getScopedStores(req.user!);
+    res.json({ stores });
   } catch (error) {
     console.error('Error fetching active stores for Deposit Monitoring:', error);
     res.status(500).json({ error: 'Failed to retrieve store locations from database.' });
@@ -535,7 +560,7 @@ depositRouter.get('/stores', async (_req, res) => {
  * POST /api/reports/deposit/list
  * Queries dbo.dts_depo for a specific store (or 'ALL_PENDING' / 'ALL'), date range, and optional keyword
  */
-depositRouter.post('/list', async (req, res) => {
+depositRouter.post('/list', async (req: AuthenticatedRequest, res) => {
   await ensureDepositApprovalSchema();
 
   const { locationName, dateFrom, dateTo, keyword, onlyActionable } = req.body ?? {};
@@ -572,6 +597,7 @@ depositRouter.post('/list', async (req, res) => {
       .input('dateTo', sql.Date, dateTo)
       .input('keyword', sql.VarChar(100), trimmedKeyword)
       .input('keywordLike', sql.VarChar(120), `%${trimmedKeyword}%`);
+    const scopeSql = allowedStoresSql(request, req.allowedStoreNames, 'd.locationname');
 
     const result = await request.query(`
       SELECT
@@ -614,7 +640,7 @@ depositRouter.post('/list', async (req, res) => {
         FROM dbo.dts_depo_attachments a
         WHERE a.depo_id = d.depo_id
       ) ac
-      WHERE (@isAllStores = 1 OR d.locationname = @locationName)
+      WHERE (@isAllStores = 1 OR d.locationname = @locationName) ${scopeSql}
         AND d.busidate BETWEEN @dateFrom AND @dateTo
         AND (
           @actionableOnly = 0
@@ -656,14 +682,21 @@ depositRouter.post('/list', async (req, res) => {
  * Returns actionable Pending Deduction Approvals, Pending Delete Requests,
  * and Recent Petty Cash Replenishments / Store Thread Updates.
  */
-depositRouter.get('/notifications', async (_req: AuthenticatedRequest, res) => {
+depositRouter.get('/notifications', async (req: AuthenticatedRequest, res) => {
   await ensureDepositApprovalSchema();
 
   try {
     const pool = await getPool();
 
+    const reqA = pool.request();
+    const reqB = pool.request();
+    const reqC = pool.request();
+    const scopeA = allowedStoresSql(reqA, req.allowedStoreNames, 'd.locationname');
+    const scopeB = allowedStoresSql(reqB, req.allowedStoreNames, 'd.locationname');
+    const scopeC = allowedStoresSql(reqC, req.allowedStoreNames, 'd.locationname');
+
     const [pendingApprovalsResult, pendingDeletesResult, recentUpdatesResult] = await Promise.all([
-      pool.request().query(`
+      reqA.query(`
         SELECT TOP 100
           d.depo_id,
           d.locationname,
@@ -688,10 +721,10 @@ depositRouter.get('/notifications', async (_req: AuthenticatedRequest, res) => {
             ORDER BY t.created_at DESC, t.thread_id DESC
           ) AS latest_thread_at
         FROM dbo.dts_depo d
-        WHERE ISNULL(d.approval_status, 'Not Required') = 'Pending'
+        WHERE ISNULL(d.approval_status, 'Not Required') = 'Pending' ${scopeA}
         ORDER BY d.busidate DESC, d.depo_id DESC
       `),
-      pool.request().query(`
+      reqB.query(`
         SELECT TOP 100
           d.depo_id,
           d.locationname,
@@ -704,10 +737,10 @@ depositRouter.get('/notifications', async (_req: AuthenticatedRequest, res) => {
           d.delete_requested_by,
           d.delete_requested_at
         FROM dbo.dts_depo d
-        WHERE ISNULL(d.delete_status, 'None') = 'Pending Delete'
+        WHERE ISNULL(d.delete_status, 'None') = 'Pending Delete' ${scopeB}
         ORDER BY ISNULL(d.delete_requested_at, CAST(d.busidate AS DATETIME2)) DESC, d.depo_id DESC
       `),
-      pool.request().query(`
+      reqC.query(`
         SELECT TOP 25
           t.thread_id,
           t.depo_id,
@@ -728,6 +761,7 @@ depositRouter.get('/notifications', async (_req: AuthenticatedRequest, res) => {
           OR t.author_role = 'Store'
         )
         AND t.created_at >= DATEADD(DAY, -14, SYSDATETIME())
+        ${scopeC}
         ORDER BY t.created_at DESC, t.thread_id DESC
       `),
     ]);

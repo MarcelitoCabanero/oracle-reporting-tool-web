@@ -3,6 +3,8 @@ import { verifyToken, type AuthUser } from './token.service.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: AuthUser;
+  /** Set by enforceStoreScope for scoped users (Area Manager). undefined = all stores. */
+  allowedStoreNames?: string[];
 }
 export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
