@@ -49,9 +49,11 @@ authRouter.post('/login', async (req, res) => {
           ? 'Operation Manager'
           : roleLower === 'executive'
             ? 'Executive'
-            : isAdminRole
-              ? 'admin'
-              : null;
+            : roleLower === 'department'
+              ? 'Department'
+              : isAdminRole
+                ? 'admin'
+                : null;
 
     if (!canonicalRole) {
       res.status(403).json({

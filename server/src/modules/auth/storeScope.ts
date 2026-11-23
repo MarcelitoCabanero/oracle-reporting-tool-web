@@ -10,7 +10,7 @@ export interface StoreRow {
 }
 
 /** Roles that can see every active store. Any other role is limited to assigned stores. */
-const ALL_STORE_ROLES = new Set(['operation manager', 'executive', 'admin']);
+const ALL_STORE_ROLES = new Set(['operation manager', 'executive', 'admin', 'department']);
 
 const ALL_TOKENS = new Set(['ALL', 'ALL_PENDING']);
 
