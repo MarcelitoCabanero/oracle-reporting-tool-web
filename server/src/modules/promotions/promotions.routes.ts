@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getPool, sql } from '../../database/db.js';
 import { requireAuth, type AuthenticatedRequest } from '../auth/auth.middleware.js';
-import { allowedStoresSql, enforceStoreScope, getScopedStores } from '../auth/storeScope.js';
+import { allowedStoresSql, enforceStoreScope, isAllToken, listScopedStoresHandler } from '../auth/storeScope.js';
 
 export const promotionsRouter = Router();
 
@@ -157,15 +157,7 @@ async function resolveDtsObjectMeta(pool: sql.ConnectionPool): Promise<DtsObject
  * GET /api/reports/promotions/stores
  * Returns all active physical store locations (IsActive = 1 AND access = 'Store')
  */
-promotionsRouter.get('/stores', async (req: AuthenticatedRequest, res) => {
-  try {
-    const stores = await getScopedStores(req.user!);
-    res.json({ stores });
-  } catch (error) {
-    console.error('Error fetching active stores for Promotions:', error);
-    res.status(500).json({ error: 'Failed to retrieve store locations from database.' });
-  }
-});
+promotionsRouter.get('/stores', listScopedStoresHandler);
 
 /**
  * GET /api/reports/promotions/catalog
@@ -234,7 +226,7 @@ promotionsRouter.post('/summary', async (req: AuthenticatedRequest, res) => {
   }
 
   const trimmedLocation = locationName.trim();
-  const isAllStores = trimmedLocation.toUpperCase() === 'ALL';
+  const isAllStores = isAllToken(trimmedLocation);
   const trimmedItemNumber =
     typeof itemNumber === 'string' && itemNumber.trim() && itemNumber.trim().toUpperCase() !== 'ALL'
       ? itemNumber.trim()
@@ -423,7 +415,7 @@ promotionsRouter.post('/check-details', async (req: AuthenticatedRequest, res) =
 
   const trimmedItemNumber = String(itemNumber).trim();
   const trimmedLocation = typeof locationName === 'string' ? locationName.trim() : 'ALL';
-  const isAllStores = !trimmedLocation || trimmedLocation.toUpperCase() === 'ALL';
+  const isAllStores = !trimmedLocation || isAllToken(trimmedLocation);
 
   try {
     const pool = await getPool();

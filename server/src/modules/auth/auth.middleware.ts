@@ -1,10 +1,13 @@
 import type { Request, Response, NextFunction } from 'express';
 import { verifyToken, type AuthUser } from './token.service.js';
+import type { StoreRow } from './storeScope.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: AuthUser;
   /** Set by enforceStoreScope for scoped users (Area Manager). undefined = all stores. */
   allowedStoreNames?: string[];
+  /** Cached by enforceStoreScope so GET /stores avoids a second query. */
+  scopedStores?: StoreRow[];
 }
 export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getPool, sql } from '../../database/db.js';
 import { requireAuth, type AuthenticatedRequest } from '../auth/auth.middleware.js';
-import { allowedStoresSql, enforceStoreScope, getScopedStores, isAllToken, isStoreAllowed } from '../auth/storeScope.js';
+import { allowedStoresSql, enforceStoreScope, hasAllStoreAccess, isAllToken, isStoreAllowed, listScopedStoresHandler } from '../auth/storeScope.js';
 
 export const salesTargetRouter = Router();
 
@@ -66,15 +66,7 @@ interface StoreQuarterTargetInput {
  * GET /api/reports/sales-target/stores
  * Returns all active physical store locations (IsActive = 1 AND access = 'Store')
  */
-salesTargetRouter.get('/stores', async (req: AuthenticatedRequest, res) => {
-  try {
-    const stores = await getScopedStores(req.user!);
-    res.json({ stores });
-  } catch (error) {
-    console.error('Error fetching active stores for Sales Target:', error);
-    res.status(500).json({ error: 'Failed to retrieve store locations from database.' });
-  }
-});
+salesTargetRouter.get('/stores', listScopedStoresHandler);
 
 /**
  * GET /api/reports/sales-target/categories
@@ -124,7 +116,11 @@ salesTargetRouter.get('/categories', async (_req, res) => {
  * PUT /api/reports/sales-target/categories
  * Updates default unit prices, default mix %, or UOM for target categories
  */
-salesTargetRouter.put('/categories', async (req, res) => {
+salesTargetRouter.put('/categories', async (req: AuthenticatedRequest, res) => {
+  if (!hasAllStoreAccess(req.user)) {
+    res.status(403).json({ error: 'Only full-access roles can update global target categories.' });
+    return;
+  }
   const { categories } = req.body ?? {};
   if (!Array.isArray(categories) || categories.length === 0) {
     res.status(400).json({ error: 'categories array is required.' });
@@ -274,7 +270,11 @@ salesTargetRouter.get('/calendar', async (req, res) => {
  * POST /api/reports/sales-target/calendar/holidays
  * Upserts a holiday entry in dbo.tbl_sales_calendar_holiday
  */
-salesTargetRouter.post('/calendar/holidays', async (req, res) => {
+salesTargetRouter.post('/calendar/holidays', async (req: AuthenticatedRequest, res) => {
+  if (!hasAllStoreAccess(req.user)) {
+    res.status(403).json({ error: 'Only full-access roles can update the global holiday calendar.' });
+    return;
+  }
   const { holidayDate, holidayName, holidayType, treatAsWeekend, remarks, isActive } = req.body ?? {};
 
   if (!holidayDate || !holidayName || !String(holidayName).trim()) {
@@ -345,10 +345,15 @@ salesTargetRouter.post('/suggest', async (req: AuthenticatedRequest, res) => {
 
   try {
     const pool = await getPool();
-    const storeParam = locationName ? String(locationName).trim() : 'ALL';
+    const rawParam = typeof locationName === 'string' ? locationName.trim() : '';
+    const storeParam = !rawParam || isAllToken(rawParam) ? 'ALL' : rawParam;
     const scopedStores = req.allowedStoreNames;
+    if (scopedStores && storeParam !== 'ALL' && !isStoreAllowed(scopedStores, storeParam)) {
+      res.status(403).json({ error: 'You do not have access to this store.' });
+      return;
+    }
     // Scoped users (Area Manager) asking for ALL: run per assigned store and merge.
-    const runNames: string[] = scopedStores && isAllToken(storeParam) ? scopedStores : [storeParam];
+    const runNames: string[] = scopedStores && storeParam === 'ALL' ? scopedStores : [storeParam];
 
     const merged: Record<string, unknown>[][] = [[], [], []];
     for (const name of runNames) {
@@ -413,7 +418,7 @@ salesTargetRouter.get('/', async (req: AuthenticatedRequest, res) => {
       .input('TargetQuarter', sql.TinyInt, qtrNum);
 
     let locationFilter = '';
-    if (locationName && locationName.toUpperCase() !== 'ALL') {
+    if (locationName && !isAllToken(locationName)) {
       request.input('LocationName', sql.VarChar(50), locationName);
       locationFilter = 'AND LocationName = @LocationName';
     }
@@ -778,10 +783,15 @@ salesTargetRouter.post('/analytics', async (req: AuthenticatedRequest, res) => {
 
   try {
     const pool = await getPool();
-    const storeParam = locationName ? String(locationName).trim() : 'ALL';
+    const rawParam = typeof locationName === 'string' ? locationName.trim() : '';
+    const storeParam = !rawParam || isAllToken(rawParam) ? 'ALL' : rawParam;
     const scopedStores = req.allowedStoreNames;
+    if (scopedStores && storeParam !== 'ALL' && !isStoreAllowed(scopedStores, storeParam)) {
+      res.status(403).json({ error: 'You do not have access to this store.' });
+      return;
+    }
     // Scoped users (Area Manager) asking for ALL: run per assigned store and merge.
-    const runNames: string[] = scopedStores && isAllToken(storeParam) ? scopedStores : [storeParam];
+    const runNames: string[] = scopedStores && storeParam === 'ALL' ? scopedStores : [storeParam];
 
     const merged: Record<string, unknown>[][] = [[], [], []];
     for (const name of runNames) {

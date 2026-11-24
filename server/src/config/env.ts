@@ -29,6 +29,10 @@ function readPort(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET?.trim()) {
+  throw new Error('JWT_SECRET environment variable is required in production.');
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   host: process.env.API_HOST ?? '0.0.0.0',

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getPool, sql } from '../../database/db.js';
 import { requireAuth, type AuthenticatedRequest } from '../auth/auth.middleware.js';
-import { enforceStoreScope, getScopedStores } from '../auth/storeScope.js';
+import { enforceStoreScope, listScopedStoresHandler } from '../auth/storeScope.js';
 
 export const rofRouter = Router();
 
@@ -24,15 +24,7 @@ function formatDateOnly(value: unknown): string {
  * GET /api/reports/rof/stores
  * Returns all active physical store locations (access = 'Store')
  */
-rofRouter.get('/stores', async (req: AuthenticatedRequest, res) => {
-  try {
-    const stores = await getScopedStores(req.user!);
-    res.json({ stores });
-  } catch (error) {
-    console.error('Error fetching active stores for ROF:', error);
-    res.status(500).json({ error: 'Failed to retrieve store locations from database.' });
-  }
-});
+rofRouter.get('/stores', listScopedStoresHandler);
 
 /**
  * POST /api/reports/rof/summary

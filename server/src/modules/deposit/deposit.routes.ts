@@ -5,7 +5,7 @@ import { Client } from 'basic-ftp';
 import { getPool, sql } from '../../database/db.js';
 import { env } from '../../config/env.js';
 import { requireAuth, type AuthenticatedRequest } from '../auth/auth.middleware.js';
-import { allowedStoresSql, enforceStoreScope, getScopedStores, isStoreAllowed } from '../auth/storeScope.js';
+import { allowedStoresSql, enforceStoreScope, isStoreAllowed, listScopedStoresHandler } from '../auth/storeScope.js';
 
 export const depositRouter = Router();
 
@@ -546,15 +546,7 @@ async function fetchDepositThreadPayload(pool: sql.ConnectionPool, depoId: numbe
  * GET /api/reports/deposit/stores
  * Returns all active physical store locations (access = 'Store')
  */
-depositRouter.get('/stores', async (req: AuthenticatedRequest, res) => {
-  try {
-    const stores = await getScopedStores(req.user!);
-    res.json({ stores });
-  } catch (error) {
-    console.error('Error fetching active stores for Deposit Monitoring:', error);
-    res.status(500).json({ error: 'Failed to retrieve store locations from database.' });
-  }
-});
+depositRouter.get('/stores', listScopedStoresHandler);
 
 /**
  * POST /api/reports/deposit/list
@@ -890,6 +882,13 @@ depositRouter.post('/:depoId/thread', async (req: AuthenticatedRequest, res) => 
     ? (rawCategory as DepositThreadCategory)
     : 'GENERAL';
 
+  if (normalizedCategory === 'PETTY_CASH_REPLENISH' && !isApproverUser(req)) {
+    res.status(403).json({
+      error: 'Only Area Managers and Admins are authorized to replenish petty cash.',
+    });
+    return;
+  }
+
   const trimmedMessage = typeof message === 'string' ? message.trim() : '';
   const incomingAttachments = Array.isArray(attachments) ? attachments : [];
 
@@ -1207,7 +1206,9 @@ depositRouter.post('/:depoId/approve-delete', async (req: AuthenticatedRequest, 
  * POST /api/reports/deposit/attachment
  * Downloads the deposit slip or category supporting attachment image from FTP and returns a base64 Data URL
  */
-depositRouter.post('/attachment', async (req, res) => {
+depositRouter.post('/attachment', async (req: AuthenticatedRequest, res) => {
+  await ensureDepositApprovalSchema();
+
   const { filename } = req.body ?? {};
 
   if (!filename || typeof filename !== 'string' || !filename.trim()) {
@@ -1218,6 +1219,24 @@ depositRouter.post('/attachment', async (req, res) => {
   const safeName = path.basename(filename.trim());
 
   try {
+    if (req.allowedStoreNames) {
+      const pool = await getPool();
+      const scopeRes = await pool
+        .request()
+        .input('filename', sql.VarChar(255), safeName)
+        .query(`
+          SELECT TOP 1 d.locationname
+          FROM dbo.dts_depo d
+          LEFT JOIN dbo.dts_depo_attachments a ON a.depo_id = d.depo_id
+          WHERE d.filename = @filename OR a.filename = @filename
+        `);
+      const loc = scopeRes.recordset[0]?.locationname;
+      if (!loc || !isStoreAllowed(req.allowedStoreNames, String(loc))) {
+        res.status(403).json({ error: 'You do not have access to this store.' });
+        return;
+      }
+    }
+
     const buffer = await downloadFtpImageBuffer(safeName);
     const mimeType = mimeFromFileName(safeName);
     const previewDataUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;

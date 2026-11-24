@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getPool, sql } from '../../database/db.js';
 import { requireAuth, type AuthenticatedRequest } from '../auth/auth.middleware.js';
-import { enforceStoreScope, getScopedStores } from '../auth/storeScope.js';
+import { enforceStoreScope, listScopedStoresHandler } from '../auth/storeScope.js';
 
 export const bomRouter = Router();
 
@@ -13,15 +13,7 @@ bomRouter.use(enforceStoreScope);
  * GET /api/reports/bom/stores
  * Returns all active stores/locations for the filter dropdown
  */
-bomRouter.get('/stores', async (req: AuthenticatedRequest, res) => {
-  try {
-    const stores = await getScopedStores(req.user!);
-    res.json({ stores });
-  } catch (error) {
-    console.error('Error fetching active stores:', error);
-    res.status(500).json({ error: 'Failed to retrieve store locations from database.' });
-  }
-});
+bomRouter.get('/stores', listScopedStoresHandler);
 
 /**
  * GET /api/reports/bom/finished-goods?search=...

@@ -86,7 +86,7 @@ export function verifyToken(token: string): AuthUser | null {
     const payload: TokenPayload = JSON.parse(base64UrlDecode(encodedPayload));
     const now = Math.floor(Date.now() / 1000);
 
-    if (payload.exp && payload.exp < now) {
+    if (typeof payload.exp !== 'number' || payload.exp < now || typeof payload.access !== 'string') {
       return null;
     }
 

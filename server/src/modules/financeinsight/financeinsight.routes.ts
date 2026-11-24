@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getPool, sql } from '../../database/db.js';
 import { requireAuth, type AuthenticatedRequest } from '../auth/auth.middleware.js';
-import { enforceStoreScope, getScopedStores, isStoreAllowed } from '../auth/storeScope.js';
+import { allowedStoresSql, enforceStoreScope, isStoreAllowed, listScopedStoresHandler } from '../auth/storeScope.js';
 
 export const financeInsightRouter = Router();
 
@@ -16,7 +16,7 @@ function num(val: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function parseStores(raw: unknown, allowed?: string[]): string[] {
+function parseStores(raw: unknown, allowed?: string[]): string[] | null {
   const requested =
     typeof raw !== 'string' || !raw.trim() || raw.trim() === 'ALL'
       ? []
@@ -29,22 +29,11 @@ function parseStores(raw: unknown, allowed?: string[]): string[] {
           ),
         ).slice(0, MAX_STORES);
 
-  // Full-access roles: pass the request through (empty = all stores).
-  if (!allowed) return requested;
+  // Full-access roles: null = all stores, non-empty = requested subset.
+  if (!allowed) return requested.length === 0 ? null : requested;
 
-  // Scoped users (Area Manager): never broader than their assigned stores.
-  const inScope = requested.length === 0 ? allowed : requested.filter((s) => isStoreAllowed(allowed, s));
-  // An empty filter would mean "all stores", so use a sentinel that matches nothing.
-  return inScope.length === 0 ? ['__NO_ACCESS__'] : inScope;
-}
-/** Adds @s0..@sN inputs and returns an SQL fragment ("AND col IN (...)") or '' for all stores. */
-function storeFilter(request: sql.Request, stores: string[], column: string): string {
-  if (stores.length === 0) return '';
-  const names = stores.map((s, i) => {
-    request.input(`s${i}`, sql.VarChar(100), s);
-    return `@s${i}`;
-  });
-  return `AND ${column} IN (${names.join(',')})`;
+  // Scoped users (Area Manager): never broader than their assigned stores ([] => 'AND 1 = 0').
+  return requested.length === 0 ? allowed : requested.filter((s) => isStoreAllowed(allowed, s));
 }
 
 function addDays(date: string, days: number): string {
@@ -78,12 +67,12 @@ async function getTotals(
   pool: sql.ConnectionPool,
   dateFrom: string,
   dateTo: string,
-  stores: string[],
+  stores: string[] | null,
 ): Promise<Totals> {
   const dsrReq = pool.request();
   dsrReq.input('dateFrom', sql.Date, dateFrom);
   dsrReq.input('dateTo', sql.Date, dateTo);
-  const dsrFilter = storeFilter(dsrReq, stores, 'locationname');
+  const dsrFilter = allowedStoresSql(dsrReq, stores, 'locationname');
   const dsr = await dsrReq.query(`
     SELECT ISNULL(SUM(netsales), 0) AS netSales, ISNULL(SUM(numguest), 0) AS guests
     FROM dbo.agg_daily_dsr
@@ -93,7 +82,7 @@ async function getTotals(
   const chkReq = pool.request();
   chkReq.input('dateFrom', sql.Date, dateFrom);
   chkReq.input('dateTo', sql.Date, dateTo);
-  const chkFilter = storeFilter(chkReq, stores, 'locationname');
+  const chkFilter = allowedStoresSql(chkReq, stores, 'locationname');
   const chk = await chkReq.query(`
     SELECT ISNULL(SUM(check_count), 0) AS checks
     FROM dbo.agg_daily_checkcount
@@ -108,15 +97,7 @@ async function getTotals(
 }
 
 /** GET /api/reports/finance-insight/stores */
-financeInsightRouter.get('/stores', async (req: AuthenticatedRequest, res) => {
-  try {
-    const stores = await getScopedStores(req.user!);
-    res.json({ stores });
-  } catch (error) {
-    console.error('Finance Insight: failed to load stores:', error);
-    res.status(500).json({ error: 'Failed to retrieve store locations.' });
-  }
-});
+financeInsightRouter.get('/stores', listScopedStoresHandler);
 
 /**
  * GET /api/reports/finance-insight/overview?dateFrom&dateTo&stores=A|B
@@ -141,7 +122,7 @@ financeInsightRouter.get('/overview', async (req, res) => {
     const dailyReq = pool.request();
     dailyReq.input('dateFrom', sql.Date, dateFrom);
     dailyReq.input('dateTo', sql.Date, dateTo);
-    const dailyFilter = storeFilter(dailyReq, stores, 'locationname');
+    const dailyFilter = allowedStoresSql(dailyReq, stores, 'locationname');
     const daily = await dailyReq.query(`
       SELECT CONVERT(VARCHAR(10), businessdate, 23) AS businessDate,
              ISNULL(SUM(netsales), 0) AS netSales
@@ -154,7 +135,7 @@ financeInsightRouter.get('/overview', async (req, res) => {
     const storeReq = pool.request();
     storeReq.input('dateFrom', sql.Date, dateFrom);
     storeReq.input('dateTo', sql.Date, dateTo);
-    const storeFilterSql = storeFilter(storeReq, stores, 'd.locationname');
+    const storeFilterSql = allowedStoresSql(storeReq, stores, 'd.locationname');
     const byStore = await storeReq.query(`
       SELECT d.locationname AS locationName,
              ISNULL(SUM(d.netsales), 0) AS netSales,
@@ -218,7 +199,7 @@ financeInsightRouter.get('/sales-distribution', async (req, res) => {
     const request = pool.request();
     request.input('dateFrom', sql.Date, dateFrom);
     request.input('dateTo', sql.Date, dateTo);
-    const filter = storeFilter(request, stores, 'locationname');
+    const filter = allowedStoresSql(request, stores, 'locationname');
     const result = await request.query(`
       SELECT locationname AS locationName,
              revenuecentername AS revenueCenter,
@@ -301,7 +282,7 @@ financeInsightRouter.get('/growth', async (req, res) => {
     const dsrReq = pool.request();
     dsrReq.input('dateFrom', sql.Date, startStr);
     dsrReq.input('dateTo', sql.Date, endStr);
-    const dsrFilter = storeFilter(dsrReq, stores, 'locationname');
+    const dsrFilter = allowedStoresSql(dsrReq, stores, 'locationname');
     const dsr = await dsrReq.query(`
       SELECT FORMAT(businessdate, 'yyyy-MM') AS ym,
              locationname AS locationName,
@@ -315,7 +296,7 @@ financeInsightRouter.get('/growth', async (req, res) => {
     const chkReq = pool.request();
     chkReq.input('dateFrom', sql.Date, startStr);
     chkReq.input('dateTo', sql.Date, endStr);
-    const chkFilter = storeFilter(chkReq, stores, 'locationname');
+    const chkFilter = allowedStoresSql(chkReq, stores, 'locationname');
     const chk = await chkReq.query(`
       SELECT FORMAT(businessdate, 'yyyy-MM') AS ym,
              locationname AS locationName,

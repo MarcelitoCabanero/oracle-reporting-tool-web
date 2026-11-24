@@ -85,6 +85,7 @@ export async function enforceStoreScope(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
+  resolveStores: (user: AuthUser) => Promise<StoreRow[]> = getScopedStores,
 ): Promise<void> {
   const user = req.user;
   if (!user) {
@@ -97,17 +98,36 @@ export async function enforceStoreScope(
   }
 
   try {
-    const allowed = (await getAllowedStoreNames(user)) ?? [];
+    const stores = await resolveStores(user);
+    req.scopedStores = stores;
+    const allowed = stores.map((s) => String(s.LOCATIONNAME).trim());
     req.allowedStoreNames = allowed;
 
     const raw = (req.body && req.body.locationName) ?? req.query?.locationName;
-    if (typeof raw === 'string' && raw.trim() && !isAllToken(raw) && !isStoreAllowed(allowed, raw)) {
-      res.status(403).json({ error: 'You do not have access to this store.' });
-      return;
+    if (raw !== undefined && raw !== null) {
+      if (typeof raw !== 'string') {
+        res.status(400).json({ error: 'Invalid locationName.' });
+        return;
+      }
+      const trimmed = raw.trim();
+      if (trimmed && !isAllToken(trimmed) && !isStoreAllowed(allowed, trimmed)) {
+        res.status(403).json({ error: 'You do not have access to this store.' });
+        return;
+      }
     }
     next();
   } catch (error) {
     console.error('Store scope resolution failed:', error);
     res.status(500).json({ error: 'Failed to resolve store access.' });
+  }
+}
+
+export async function listScopedStoresHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const stores = req.scopedStores ?? (await getScopedStores(req.user!));
+    res.json({ stores });
+  } catch (error) {
+    console.error('Error fetching active stores:', error);
+    res.status(500).json({ error: 'Failed to retrieve store locations from database.' });
   }
 }
